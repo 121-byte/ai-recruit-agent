@@ -1,0 +1,46 @@
+# Maven / Java 构建
+target/
+*.class
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing-properties/
+
+# Node / 前端
+demo/frontend/node_modules/
+demo/frontend/dist/
+demo/frontend/.vite/
+demo/frontend/npm-debug.log*
+demo/frontend/yarn-error.log*
+
+# 运行时数据 / 日志
+demo/logs/
+demo/workspace/
+demo/.agentscope/
+demo/data/intent-anchors.json
+*.log
+
+# 密钥 / 本地配置 (不提交真实密钥)
+demo/src/main/resources/application.properties
+demo/src/main/resources/application-local.properties
+config/application-secrets.properties
+*.env
+.env
+
+# Claude Code 本地设置
+.claude/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.project
+.classpath
+.settings/
+nbproject/private/
+
+# 系统
+.DS_Store
+Thumbs.db

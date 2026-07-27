@@ -1,0 +1,89 @@
+# ════════════════════════════════════════════════════════════
+# AI 智能招聘系统 — application.properties 模板
+# 复制为 application.properties 后填入你自己的密钥与基础设施地址
+# (本文件不含任何真实密钥, 可安全提交)
+# ════════════════════════════════════════════════════════════
+
+# ─── Server ───
+server.port=8888
+
+# ─── Mock 降级开关 ───
+# true: 无 API key / 无 PG/Redis/RabbitMQ 也能启动 (AI 返回桩数据, 数据源回退 H2)
+# false: 用真实 PG+pgvector / Redis / RabbitMQ / Sa-Token 鉴权
+app.mock.enabled=true
+
+# ─── PostgreSQL (pgvector) ───
+spring.datasource.url=jdbc:postgresql://localhost:5432/airecruit
+spring.datasource.username=postgres
+spring.datasource.password=YOUR_PG_PASSWORD
+spring.datasource.driver-class-name=org.postgresql.Driver
+# 启动时自动执行 schema (建表 + CREATE EXTENSION vector/pg_trgm + 种子账号), 幂等
+spring.sql.init.mode=always
+spring.sql.init.schema-locations=classpath:sql/schema.sql,classpath:sql/schema_auth.sql
+spring.sql.init.continue-on-error=false
+
+# ─── MyBatis ───
+mybatis-plus.mapper-locations=classpath*:mapper/*.xml
+mybatis-plus.type-handlers-package=com.example.recruit.dal.handler
+mybatis-plus.configuration.map-underscore-to-camel-case=true
+
+# ─── Redis (Sa-Token 会话存储) ───
+spring.data.redis.host=localhost
+spring.data.redis.port=6379
+
+# ─── Actuator ───
+management.endpoints.web.exposure.include=health,prometheus,metrics
+management.endpoint.health.show-details=always
+
+# ─── AI Model (DeepSeek 官方 OpenAI 兼容端点) ───
+app.ai.api-key=YOUR_DEEPSEEK_API_KEY
+app.ai.base-url=https://api.deepseek.com/v1
+app.ai.model.primary=openai:deepseek-v4-flash
+app.ai.model.fast=openai:deepseek-v4-flash
+
+# ─── Embedding (阿里云百炼) ───
+app.embedding.api-key=YOUR_BAILIAN_API_KEY
+app.embedding.base-url=https://dashscope.aliyuncs.com/compatible-mode/v1
+app.embedding.model=qwen3.7-text-embedding
+app.embedding.dimension=1024
+
+# ─── Rerank (阿里云百炼, 原生 rerank 端点) ───
+app.rerank.api-key=YOUR_BAILIAN_API_KEY
+app.rerank.base-url=https://dashscope.aliyuncs.com
+app.rerank.model=qwen3-vl-rerank
+
+# ─── File Upload ───
+spring.servlet.multipart.max-file-size=10MB
+spring.servlet.multipart.max-request-size=10MB
+
+# ─── File Parser (markitdown) ───
+app.fileparser.python-command=python3
+app.fileparser.script-path=scripts/parse_resume.py
+
+# ─── RabbitMQ ───
+spring.rabbitmq.host=localhost
+spring.rabbitmq.port=5672
+spring.rabbitmq.username=guest
+spring.rabbitmq.password=guest
+
+# ─── LangFuse (自托管, 默认关闭) ───
+app.langfuse.enabled=false
+app.langfuse.base-url=http://localhost:3000
+app.langfuse.public-key=
+app.langfuse.secret-key=
+
+# ─── Web Search (Tavily) ───
+app.web-search.api-key=YOUR_TAVILY_API_KEY
+app.web-search.base-url=https://api.tavily.com
+
+# ─── Sa-Token ───
+sa-token.token-name=satoken
+sa-token.timeout=7200
+sa-token.is-concurrent=true
+sa-token.token-style=uuid
+sa-token.is-read-header=true
+sa-token.is-read-cookie=false
+
+# ─── 日志 ───
+logging.level.com.example.recruit=INFO
+logging.level.io.agentscope=INFO
