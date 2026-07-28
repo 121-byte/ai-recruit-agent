@@ -96,11 +96,16 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
         </dependency>
-        <!-- H2 作为无 PG 环境下的启动降级数据源 -->
+        <!-- PostGIS JDBC (与原项目对齐, pgvector 空间/类型支持) -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>runtime</scope>
+            <groupId>net.postgis</groupId>
+            <artifactId>postgis-jdbc</artifactId>
+            <version>2024.1.0</version>
+        </dependency>
+        <!-- Jackson 显式依赖 (避免传递依赖漂移) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
         <!-- pgvector 由 dal/handler 自定义 TypeHandler 处理 float[] ↔ vector 字符串 -->
 
@@ -110,12 +115,14 @@
             <artifactId>sa-token-spring-boot3-starter</artifactId>
             <version>${sa-token.version}</version>
         </dependency>
-        <!-- Sa-Token 整合 Redis (jackson 序列化) -->
+        <!-- Sa-Token 整合 Redis (jackson 序列化) —— 暂时禁用: Redis 启用了 requirepass
+             但尚未配置密码, 先回退到 Sa-Token 内置内存会话存储跑通 6.3; 补密码后放开
         <dependency>
             <groupId>cn.dev33</groupId>
             <artifactId>sa-token-redis-jackson</artifactId>
             <version>${sa-token.version}</version>
         </dependency>
+        -->
 
         <!-- 密码加密: BCrypt (不引入完整 Spring Security) -->
         <dependency>
@@ -123,7 +130,7 @@
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
 
-        <!-- 文档解析: PDF / DOC / DOCX 简历解析 -->
+        <!-- 文档解析: PDF / DOCX 简历解析 (与原项目对齐, 仅 poi-ooxml) -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
@@ -131,17 +138,7 @@
         </dependency>
         <dependency>
             <groupId>org.apache.poi</groupId>
-            <artifactId>poi</artifactId>
-            <version>${poi.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
-            <version>${poi.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.poi</groupId>
-            <artifactId>poi-scratchpad</artifactId>
             <version>${poi.version}</version>
         </dependency>
 

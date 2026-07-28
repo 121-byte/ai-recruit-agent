@@ -67,6 +67,19 @@ public class ChatSessionService {
         }
     }
 
+    /** 更新会话标题 (对齐清单 §5.2 PUT /{id}/title)。 */
+    public boolean updateTitle(Long sessionId, String title) {
+        if (sessionId == null || title == null) {
+            return false;
+        }
+        try {
+            return sessionMapper.updateTitle(sessionId, title) > 0;
+        } catch (Exception e) {
+            log.warn("updateTitle failed: {}", e.getMessage());
+            return false;
+        }
+    }
+
     public List<ChatMessage> getMessages(Long sessionId) {
         try {
             return messageMapper.selectList(

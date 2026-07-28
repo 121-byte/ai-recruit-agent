@@ -20,7 +20,7 @@ public interface MemoryEntryMapper extends BaseMapper<MemoryEntry> {
     /**
      * 按向量相似度 (cosine distance) 检索 top-K 记忆。
      */
-    @Select("SELECT * FROM memory_entry WHERE agent_id = #{agentId} ORDER BY embedding <=> #{queryVector}::vector LIMIT #{topK}")
+    @Select("SELECT * FROM memory_entry WHERE agent_id = #{agentId} ORDER BY embedding &lt;=&gt; #{queryVector}::vector LIMIT #{topK}")
     List<MemoryEntry> searchByVector(@Param("agentId") String agentId,
                                     @Param("queryVector") String queryVector,
                                     @Param("topK") int topK);
@@ -35,7 +35,7 @@ public interface MemoryEntryMapper extends BaseMapper<MemoryEntry> {
     /**
      * 对低重要性且长期未更新的记忆应用衰减因子。
      */
-    @Update("UPDATE memory_entry SET importance = importance * #{factor} WHERE agent_id = #{agentId} AND importance < 0.7 AND updated_at < #{cutoff}")
+    @Update("UPDATE memory_entry SET importance = importance * #{factor} WHERE agent_id = #{agentId} AND importance &lt; 0.7 AND updated_at < #{cutoff}")
     int applyDecay(@Param("agentId") String agentId,
                    @Param("factor") double factor,
                    @Param("cutoff") LocalDateTime cutoff);
@@ -43,7 +43,7 @@ public interface MemoryEntryMapper extends BaseMapper<MemoryEntry> {
     /**
      * 将低于阈值的记忆归档为 archived。
      */
-    @Update("UPDATE memory_entry SET category = 'archived' WHERE agent_id = #{agentId} AND importance < #{threshold}")
+    @Update("UPDATE memory_entry SET category = 'archived' WHERE agent_id = #{agentId} AND importance &lt; #{threshold}")
     int archiveLowImportance(@Param("agentId") String agentId,
                              @Param("threshold") double threshold);
 
@@ -53,4 +53,37 @@ public interface MemoryEntryMapper extends BaseMapper<MemoryEntry> {
     @Delete("DELETE FROM memory_entry WHERE id IN (SELECT id FROM memory_entry WHERE agent_id = #{agentId} ORDER BY COALESCE(importance,0.5) ASC, updated_at ASC LIMIT #{limit})")
     int deleteLowest(@Param("agentId") String agentId,
                      @Param("limit") int limit);
+
+    /**
+     * 按 agent_id 查询全部记忆。
+     */
+    @Select("SELECT * FROM memory_entry WHERE agent_id = #{agentId} ORDER BY created_at DESC")
+    List<MemoryEntry> findByAgentId(@Param("agentId") String agentId);
+
+    /**
+     * 按 agent_id + category 查询记忆。
+     */
+    @Select("SELECT * FROM memory_entry WHERE agent_id = #{agentId} AND category = #{category} ORDER BY created_at DESC")
+    List<MemoryEntry> findByAgentIdAndCategory(@Param("agentId") String agentId,
+                                                @Param("category") String category);
+
+    /**
+     * 访问计数 +1 并刷新 last_access 时间。
+     */
+    @Update("UPDATE memory_entry SET access_count = access_count + 1, last_access = now() WHERE id = #{id}")
+    int incrementAccessCount(@Param("id") Long id);
+
+    /**
+     * 更新单条记忆的重要性分数。
+     */
+    @Update("UPDATE memory_entry SET importance = #{importance} WHERE id = #{id}")
+    int updateImportance(@Param("id") Long id,
+                         @Param("importance") Double importance);
+
+    /**
+     * 按 agent_id + memory_key 删除记忆。
+     */
+    @Delete("DELETE FROM memory_entry WHERE agent_id = #{agentId} AND memory_key = #{memoryKey}")
+    int deleteByAgentIdAndKey(@Param("agentId") String agentId,
+                             @Param("memoryKey") String memoryKey);
 }

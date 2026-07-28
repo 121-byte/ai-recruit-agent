@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.example.recruit.dal.handler.PgArrayTypeHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 
@@ -23,8 +24,8 @@ public class ConsolidationTask {
     private String status;
 
     /** 待巩固的记忆条目 ID 集合 (BIGINT[]) */
-    @TableField(typeHandler = JacksonTypeHandler.class)
-    private JsonNode entryIds;
+    @TableField(typeHandler = PgArrayTypeHandler.class)
+    private Long[] entryIds;
 
     @TableField(typeHandler = JacksonTypeHandler.class)
     private JsonNode result;

@@ -143,6 +143,24 @@ export function useAgentStream() {
       case 'done':
         assistantMsg.thinking = false
         break
+      case 'stop':
+        // 服务端要求停止 / 用户停止通知
+        sending.value = false
+        assistantMsg.thinking = false
+        if (abortController) {
+          abortController.abort()
+          abortController = null
+        }
+        break
+      case 'data':
+        // 通用数据帧：直接附加到当前消息内容（或更新 data 字段）
+        if (data.delta !== undefined) {
+          assistantMsg.content += data.delta
+        } else if (data.text !== undefined) {
+          assistantMsg.content += data.text
+        }
+        if (data.isLast) assistantMsg.thinking = false
+        break
       default:
         // 未知事件类型忽略
         break

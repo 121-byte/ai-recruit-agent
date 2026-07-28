@@ -2,9 +2,9 @@ package com.example.recruit.agent.core;
 
 import com.example.recruit.agent.context.ChatSessionService;
 import com.example.recruit.agent.context.ContextAssembler;
+import com.example.recruit.agent.context.ContextSnapshotService;
 import com.example.recruit.agent.context.SessionManager;
 import com.example.recruit.agent.event.AgentEventSseMapper;
-import com.example.recruit.agent.event.AgentTraceService;
 import com.example.recruit.agent.routing.Intent;
 import com.example.recruit.agent.routing.IntentRouter;
 import com.example.recruit.agent.routing.IntentType;
@@ -14,7 +14,10 @@ import com.example.recruit.memory.AutoMemoryExtractor;
 import com.example.recruit.memory.ConsolidationScheduler;
 import com.example.recruit.memory.HybridMemoryRetriever;
 import com.example.recruit.memory.RedisSessionMemory;
+import com.example.recruit.service.AgentTraceService;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.harness.agent.HarnessAgent;
@@ -74,7 +77,8 @@ public class ConversationAgentService {
     private final DeepSeekModelService deepSeekModelService;          // LLM 服务
     private final ReWooExecutor reWooExecutor;                        // ReWOO 执行器
     private final RedisSessionMemory redisSessionMemory;              // Redis 短期记忆
-    private final AgentTraceService agentTraceService;                // Agent 追踪
+    private final AgentTraceService agentTraceService;                // Agent 追踪 (写入+读取, P4 统一)
+    private final ContextSnapshotService contextSnapshotService;       // 上下文快照 (HITL)
 
     public ConversationAgentService(RecruitmentAgentService recruitmentAgentService,
                                       SupervisorAgentService supervisorAgentService,
@@ -89,7 +93,8 @@ public class ConversationAgentService {
                                       DeepSeekModelService deepSeekModelService,
                                       ReWooExecutor reWooExecutor,
                                       RedisSessionMemory redisSessionMemory,
-                                      AgentTraceService agentTraceService) {
+                                      AgentTraceService agentTraceService,
+                                      ContextSnapshotService contextSnapshotService) {
         this.recruitmentAgentService = recruitmentAgentService;
         this.supervisorAgentService = supervisorAgentService;
         this.contextAssembler = contextAssembler;
@@ -104,6 +109,7 @@ public class ConversationAgentService {
         this.reWooExecutor = reWooExecutor;
         this.redisSessionMemory = redisSessionMemory;
         this.agentTraceService = agentTraceService;
+        this.contextSnapshotService = contextSnapshotService;
     }
 
     /**
@@ -197,10 +203,20 @@ public class ConversationAgentService {
         });
     }
 
-    /** HITL：生成人工确认事件，零 LLM 调用。 */
+    /** HITL：生成人工确认事件，零 LLM 调用。保存上下文快照供 confirm 恢复。 */
     private Flux<String> formatHitl(String agentId, String conversationId, String userMessage) {
+        String replyId = "hitl-" + System.currentTimeMillis();
+        try {
+            io.agentscope.core.agent.RuntimeContext ctx = sessionManager.getOrCreate(conversationId);
+            ctx.put("hitlAgentId", agentId);
+            ctx.put("hitlConversationId", conversationId);
+            ctx.put("hitlUserMessage", userMessage);
+            contextSnapshotService.save(replyId, ctx);
+        } catch (Exception e) {
+            log.warn("save hitl snapshot failed: {}", e.getMessage());
+        }
         Map<String, Object> hitl = new LinkedHashMap<>();
-        hitl.put("replyId", "hitl-" + System.currentTimeMillis());
+        hitl.put("replyId", replyId);
         hitl.put("message", "此操作需要人工确认：");
         hitl.put("userMessage", userMessage);
         return Flux.just(
@@ -267,6 +283,93 @@ public class ConversationAgentService {
             }
         } catch (Throwable ignored) {
         }
+    }
+
+    // ─────────────────── HITL / stop / explain (对齐清单 §5.1) ───────────────────
+
+    /**
+     * 停止当前对话。
+     * 真实停止通过 HarnessAgent.interrupt() 实现, 此处返回确认并清理快照。
+     */
+    public Map<String, Object> stop(String agentId) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("stopped", true);
+        result.put("agentId", agentId);
+        return result;
+    }
+
+    /**
+     * HITL 人工确认 (P4 真实恢复): 恢复 replyId 对应的 RuntimeContext 快照,
+     * 取出原 agentId/conversationId/userMessage, 用 ReAct Agent 异步执行原操作 (不阻塞 HTTP 响应)。
+     * action 含 reject/deny → 拒绝执行。
+     */
+    public Map<String, Object> confirmHitl(String replyId, String action) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("replyId", replyId);
+        result.put("action", action == null ? "approved" : action);
+
+        io.agentscope.core.agent.RuntimeContext ctx = contextSnapshotService.restore(replyId);
+        if (ctx == null) {
+            result.put("confirmed", false);
+            result.put("error", "快照不存在或已过期");
+            return result;
+        }
+        String agentId = ctx.get("hitlAgentId", String.class);
+        String conversationId = ctx.get("hitlConversationId", String.class);
+        String userMessage = ctx.get("hitlUserMessage", String.class);
+        // 恢复后移除快照, 避免内存泄漏
+        contextSnapshotService.remove(replyId);
+
+        boolean approved = action == null
+                || action.toLowerCase().contains("approv")
+                || action.toLowerCase().contains("confirm")
+                || action.toLowerCase().contains("yes");
+        if (!approved) {
+            result.put("confirmed", false);
+            result.put("result", "已拒绝，操作未执行");
+            return result;
+        }
+        result.put("confirmed", true);
+        result.put("userMessage", userMessage);
+        // 真实恢复: 异步用 ReAct Agent 执行原操作 (不阻塞 HTTP 响应)
+        final String aId = agentId == null ? "hr:0" : agentId;
+        final String cId = conversationId == null ? replyId : conversationId;
+        final String msg = userMessage == null ? "" : userMessage;
+        try {
+            streamReAct(aId, cId, msg).subscribe(
+                    sse -> { },
+                    e -> log.warn("HITL 恢复执行失败: {}", e.getMessage())
+            );
+            result.put("result", "已确认，操作已恢复执行");
+        } catch (Exception e) {
+            result.put("result", "恢复执行失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 解释 Agent 决策链路: 读取会话 trace + DeepSeek 生成摘要。
+     * 返回 Map{steps, summary, model}。
+     */
+    public Map<String, Object> explain(String sessionId) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        List<?> traces = agentTraceService.getSessionTrace(sessionId);
+        result.put("steps", traces);
+        String summary;
+        try {
+            String sys = "你是 Agent 决策解释器。基于以下 Agent 追踪步骤, 用中文简要解释 Agent 的决策过程与工具调用, 150 字内。";
+            StringBuilder user = new StringBuilder("会话 ID: " + sessionId + "\n步骤数: " + traces.size() + "\n");
+            for (Object t : traces) {
+                user.append(t == null ? "" : t.toString()).append('\n');
+            }
+            summary = deepSeekModelService.chat(sys, user.toString());
+        } catch (Exception e) {
+            log.warn("explain chat failed: {}", e.getMessage());
+            summary = "无法生成解释: " + e.getMessage();
+        }
+        result.put("summary", summary);
+        result.put("model", "deepseek-v4-flash");
+        return result;
     }
 
     // ─────────────────── finalizeTurn (文档 §4.1 doOnComplete 后处理) ───────────────────

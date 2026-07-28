@@ -9,17 +9,17 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * 异步任务 API (复刻自文档 §14.11)。
+ * 异步任务状态 API (复刻自对齐清单 §5.10, @RequestMapping("/api/tasks"))。
  *
- * <p>GET /api/task/{taskId}/status 查询任务状态
+ * <p>GET /api/tasks/{taskId}/status 查询任务状态 (单复数对齐原项目)。
  */
 @RestController
-@RequestMapping("/api/task")
-public class TaskController {
+@RequestMapping("/api/tasks")
+public class TaskStatusController {
 
     private final TaskStatusManager taskStatusManager;
 
-    public TaskController(TaskStatusManager taskStatusManager) {
+    public TaskStatusController(TaskStatusManager taskStatusManager) {
         this.taskStatusManager = taskStatusManager;
     }
 

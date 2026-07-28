@@ -107,13 +107,13 @@ public class ConsolidationScheduler {
         try {
             ConsolidationTask task = new ConsolidationTask();
             task.setStatus("processing");
-            ArrayNode ids = mapper.createArrayNode();
+            java.util.List<Long> ids = new java.util.ArrayList<>();
             for (MemoryEntry e : entries) {
                 if (e.getId() != null) {
                     ids.add(e.getId());
                 }
             }
-            task.setEntryIds(ids);
+            task.setEntryIds(ids.toArray(new Long[0]));
             task.setCreatedAt(LocalDateTime.now());
             task.setUpdatedAt(LocalDateTime.now());
             consolidationTaskMapper.insert(task);

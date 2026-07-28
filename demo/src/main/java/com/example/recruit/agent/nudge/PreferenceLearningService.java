@@ -63,4 +63,15 @@ public class PreferenceLearningService {
             return null;
         }
     }
+
+    /**
+     * 处理 HR 反馈, 记录到 hr_preference 表 (对齐清单 §5.1 chat/feedback)。
+     * feedback 为自由文本, 记录到 "feedback" 键。
+     */
+    public void processFeedback(Long userId, String feedback) {
+        if (userId == null) {
+            return;
+        }
+        record(userId, "feedback", feedback == null ? "" : feedback);
+    }
 }

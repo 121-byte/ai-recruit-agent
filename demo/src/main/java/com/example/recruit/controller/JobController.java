@@ -1,8 +1,8 @@
 package com.example.recruit.controller;
 
-import com.example.recruit.agent.tool.JobAnalysisTool;
 import com.example.recruit.dal.entity.JobProfile;
-import com.example.recruit.dal.mapper.JobProfileMapper;
+import com.example.recruit.service.JobAnalysisService;
+import com.example.recruit.service.JobProfileService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -30,18 +29,19 @@ import java.util.Map;
 @RequestMapping("/api/jobs")
 public class JobController {
 
-    private final JobProfileMapper jobMapper;
-    private final JobAnalysisTool jobAnalysisTool;
+    private final JobProfileService jobProfileService;
+    private final JobAnalysisService jobAnalysisService;
 
-    public JobController(JobProfileMapper jobMapper, JobAnalysisTool jobAnalysisTool) {
-        this.jobMapper = jobMapper;
-        this.jobAnalysisTool = jobAnalysisTool;
+    public JobController(JobProfileService jobProfileService,
+                        JobAnalysisService jobAnalysisService) {
+        this.jobProfileService = jobProfileService;
+        this.jobAnalysisService = jobAnalysisService;
     }
 
     @GetMapping
     public List<JobProfile> list() {
         try {
-            return jobMapper.selectList(null);
+            return jobProfileService.listAll();
         } catch (Exception e) {
             return List.of();
         }
@@ -50,7 +50,7 @@ public class JobController {
     @GetMapping("/{id}")
     public JobProfile get(@PathVariable Long id) {
         try {
-            return jobMapper.selectById(id);
+            return jobProfileService.getById(id);
         } catch (Exception e) {
             return null;
         }
@@ -62,11 +62,7 @@ public class JobController {
             if (body.getStatus() == null) {
                 body.setStatus("draft");
             }
-            LocalDateTime now = LocalDateTime.now();
-            body.setCreatedAt(now);
-            body.setUpdatedAt(now);
-            jobMapper.insert(body);
-            return body;
+            return jobProfileService.create(body);
         } catch (Exception e) {
             return body;
         }
@@ -76,8 +72,7 @@ public class JobController {
     public JobProfile update(@PathVariable Long id, @RequestBody JobProfile body) {
         try {
             body.setId(id);
-            body.setUpdatedAt(LocalDateTime.now());
-            jobMapper.updateById(body);
+            jobProfileService.update(body);
         } catch (Exception ignored) {
         }
         return body;
@@ -86,7 +81,7 @@ public class JobController {
     @DeleteMapping("/{id}")
     public Map<String, Object> delete(@PathVariable Long id) {
         try {
-            jobMapper.deleteById(id);
+            jobProfileService.delete(id);
         } catch (Exception ignored) {
         }
         return Map.of("status", "ok");
@@ -94,6 +89,6 @@ public class JobController {
 
     @PostMapping("/{id}/analyze")
     public Map<String, Object> analyze(@PathVariable Long id) {
-        return jobAnalysisTool.analyzeJob(id);
+        return jobAnalysisService.analyze(id);
     }
 }

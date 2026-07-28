@@ -1,47 +1,32 @@
 package com.example.recruit.agent.tool;
 
-import com.example.recruit.dal.entity.Resume;
-import com.example.recruit.dal.mapper.ResumeMapper;
-import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.EmbeddingService;
-import com.example.recruit.llm.JsonGuard;
-import com.example.recruit.llm.QuickInfoExtractor;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.example.recruit.service.ResumeAnalysisService;
+import com.example.recruit.service.analysis.ResumeAnalysisResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 简历分析工具 (复刻自文档 §8 ResumeAnalysisTool)。
  *
- * <p>用 LLM 将 raw_text 解析为结构化 parsed_json（姓名/意向/技能/工作经历/教育），
- * 写回 embedding。
+ * <p>薄封装：调用 {@link ResumeAnalysisService#analyzeFull(Long)}，结果 truncate。
+ * Tool 不再注入 DeepSeek/Embedding/Mapper。
  */
 @Component
 public class ResumeAnalysisTool {
 
-    private static final Logger log = LoggerFactory.getLogger(ResumeAnalysisTool.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .enable(SerializationFeature.INDENT_OUTPUT);
 
-    private final ResumeMapper resumeMapper;
-    private final DeepSeekModelService deepSeekModelService;
-    private final EmbeddingService embeddingService;
-    private final QuickInfoExtractor quickInfoExtractor;
+    private final ResumeAnalysisService resumeAnalysisService;
 
-    public ResumeAnalysisTool(ResumeMapper resumeMapper,
-                               DeepSeekModelService deepSeekModelService,
-                               EmbeddingService embeddingService,
-                               QuickInfoExtractor quickInfoExtractor) {
-        this.resumeMapper = resumeMapper;
-        this.deepSeekModelService = deepSeekModelService;
-        this.embeddingService = embeddingService;
-        this.quickInfoExtractor = quickInfoExtractor;
+    public ResumeAnalysisTool(ResumeAnalysisService resumeAnalysisService) {
+        this.resumeAnalysisService = resumeAnalysisService;
     }
 
     @Tool(
@@ -51,54 +36,25 @@ public class ResumeAnalysisTool {
     public Object analyzeResume(
             @ToolParam(name = "resumeId", description = "简历 ID")
             Long resumeId) {
-
-        Resume r = resumeMapper.selectById(resumeId);
-        if (r == null) {
-            java.util.Map<String, Object> err = new java.util.LinkedHashMap<>();
-            err.put("error", "简历不存在: " + resumeId);
-            return err;
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (resumeId == null) {
+            out.put("error", "resumeId 不能为空");
+            return out;
         }
-
-        // 先用正则快速预填
-        ObjectNode merged = quickInfoExtractor.extract(r.getRawText());
-
-        String sys = """
-                你是简历解析器。从简历文本提取结构化信息，以 JSON 输出:
-                {"name":"...","intended_position":"...","work_years":0,"skills":["..."],
-                 "education":[{"school":"...","major":"...","degree":"..."}],
-                 "work_experience":[{"company":"...","position":"...","duration":"...","description":"..."}]}
-                不要 markdown 标记。""";
-        try {
-            String reply = deepSeekModelService.chatJson(sys, r.getRawText() == null ? "" : r.getRawText());
-            JsonNode parsed = JsonGuard.parseJsonSafe(reply);
-            if (parsed != null && parsed.isObject()) {
-                // 合并: LLM 结果优先，LLM 缺字段则用 quickInfo 补
-                for (String field : new String[]{"name", "phone", "email"}) {
-                    JsonNode v = parsed.path(field);
-                    if ((v.isMissingNode() || v.asText("").isEmpty()) && merged.has(field)) {
-                        ((ObjectNode) parsed).set(field, merged.get(field));
-                    }
-                }
-                r.setParsedJson(parsed);
-            } else {
-                r.setParsedJson(merged);
-            }
-            try {
-                r.setEmbedding(embeddingService.embed(r.getRawText()));
-            } catch (Throwable ignored) {
-            }
-            r.setStatus("reviewed");
-            r.setUpdatedAt(LocalDateTime.now());
-            resumeMapper.updateById(r);
-        } catch (Exception e) {
-            log.warn("analyzeResume failed: {}", e.getMessage());
+        ResumeAnalysisResult result = resumeAnalysisService.analyzeFull(resumeId);
+        if (result == null) {
+            out.put("error", "简历不存在或分析失败: " + resumeId);
+            return out;
         }
-
-        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
-        out.put("resume_id", r.getId());
-        out.put("name", r.getCandidateName());
-        out.put("parsed_json", r.getParsedJson());
-        out.put("status", r.getStatus());
+        out.put("resume_id", resumeId);
+        if (result.getStructuredData() != null) {
+            out.put("name", result.getStructuredData().getName());
+            out.put("parsed_json", result.getStructuredData().toJsonNode());
+        }
+        out.put("implicit_insights", result.getImplicitInsights() == null ? null : result.getImplicitInsights().toJsonNode());
+        out.put("potential_assessment", result.getPotentialAssessment() == null ? null : result.getPotentialAssessment().toJsonNode());
+        out.put("risk_assessment", result.getRiskAssessment() == null ? null : result.getRiskAssessment().toJsonNode());
+        out.put("status", "reviewed");
         return out;
     }
 }

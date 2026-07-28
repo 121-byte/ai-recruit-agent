@@ -70,9 +70,7 @@ public class FileParserUtil {
             if (lower.endsWith(".docx")) {
                 return parseDocx(content);
             }
-            if (lower.endsWith(".doc")) {
-                return parseDoc(content);
-            }
+            // .doc (旧格式) 由 markitdown 主路径处理; POI HWPF 已随 poi-scratchpad 移除
             // 未知扩展名, 尝试按 UTF-8 文本返回
             return new String(content, StandardCharsets.UTF_8);
         } catch (Exception e) {
@@ -144,14 +142,6 @@ public class FileParserUtil {
                 sb.append(p.getText()).append('\n');
             }
             return sb.toString();
-        }
-    }
-
-    /** POI HWPFDocument 解析 DOC 旧格式 (兜底)。 */
-    private String parseDoc(byte[] content) throws Exception {
-        try (InputStream is = new java.io.ByteArrayInputStream(content);
-             org.apache.poi.hwpf.HWPFDocument doc = new org.apache.poi.hwpf.HWPFDocument(is)) {
-            return doc.getDocumentText();
         }
     }
 }

@@ -5,13 +5,35 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentEventType;
 import io.agentscope.core.event.AgentResultEvent;
+import io.agentscope.core.event.AgentStartEvent;
+import io.agentscope.core.event.AllToolsDeniedEvent;
 import io.agentscope.core.event.CustomEvent;
+import io.agentscope.core.event.DataBlockDeltaEvent;
+import io.agentscope.core.event.DataBlockEndEvent;
+import io.agentscope.core.event.DataBlockStartEvent;
+import io.agentscope.core.event.ExternalExecutionResultEvent;
 import io.agentscope.core.event.HintBlockEvent;
+import io.agentscope.core.event.ModelCallEndEvent;
+import io.agentscope.core.event.ModelCallStartEvent;
+import io.agentscope.core.event.RequireExternalExecutionEvent;
+import io.agentscope.core.event.RequireUserConfirmEvent;
+import io.agentscope.core.event.SubagentExposedEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.TextBlockEndEvent;
+import io.agentscope.core.event.TextBlockStartEvent;
+import io.agentscope.core.event.ThinkingBlockDeltaEvent;
+import io.agentscope.core.event.ThinkingBlockEndEvent;
+import io.agentscope.core.event.ThinkingBlockStartEvent;
+import io.agentscope.core.event.ToolCallDeltaEvent;
+import io.agentscope.core.event.ToolCallEndEvent;
 import io.agentscope.core.event.ToolCallStartEvent;
+import io.agentscope.core.event.ToolResultDataDeltaEvent;
 import io.agentscope.core.event.ToolResultEndEvent;
+import io.agentscope.core.event.ToolResultStartEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
+import io.agentscope.core.event.UserConfirmResultEvent;
+import io.agentscope.core.message.Msg;
+import io.agentscope.core.model.ChatUsage;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -68,15 +90,29 @@ public class AgentEventSseMapper {
         }
         AgentEventType type = event.getType();
 
-        // ─── 文本增量 ───
+        // ─── 文本块 (text) ───
+        if (event instanceof TextBlockStartEvent) {
+            return format("text", mapOf("delta", "", "isLast", false));
+        }
         if (event instanceof TextBlockDeltaEvent e) {
-            return format("text", mapOf("delta", e.getDelta(), "isLast", false));
+            return format("text", mapOf("delta", maskPii(e.getDelta()), "isLast", false));
         }
         if (event instanceof TextBlockEndEvent) {
             return format("text", mapOf("delta", "", "isLast", true));
         }
 
-        // ─── 工具调用 ───
+        // ─── 思考块 (thinking) ───
+        if (event instanceof ThinkingBlockStartEvent) {
+            return format("thinking", mapOf("active", true));
+        }
+        if (event instanceof ThinkingBlockDeltaEvent e) {
+            return format("thinking", mapOf("delta", e.getDelta(), "isLast", false));
+        }
+        if (event instanceof ThinkingBlockEndEvent) {
+            return format("thinking", mapOf("delta", "", "active", false, "isLast", true));
+        }
+
+        // ─── 工具调用 (tool_call) ───
         if (event instanceof ToolCallStartEvent e) {
             String hint = getProgressHint(e.getToolCallName());
             return format("tool_call", mapOf(
@@ -84,13 +120,36 @@ public class AgentEventSseMapper {
                     "toolCallId", e.getToolCallId(),
                     "progressHint", hint));
         }
+        if (event instanceof ToolCallDeltaEvent e) {
+            return format("tool_call", mapOf(
+                    "name", e.getToolCallName(),
+                    "toolCallId", e.getToolCallId(),
+                    "delta", e.getDelta()));
+        }
+        if (event instanceof ToolCallEndEvent e) {
+            return format("tool_call", mapOf(
+                    "name", e.getToolCallName(),
+                    "toolCallId", e.getToolCallId(),
+                    "finished", true));
+        }
 
-        // ─── 工具结果 (流式文本 + 结束) ───
-        if (event instanceof ToolResultTextDeltaEvent e) {
-            String result = maskPii(e.getDelta());
+        // ─── 工具结果 (tool_result) — 流式文本 + 数据 delta 均经 maskPii ───
+        if (event instanceof ToolResultStartEvent e) {
             return format("tool_result", mapOf(
                     "name", e.getToolCallName(),
-                    "result", result));
+                    "toolCallId", e.getToolCallId(),
+                    "started", true));
+        }
+        if (event instanceof ToolResultTextDeltaEvent e) {
+            return format("tool_result", mapOf(
+                    "name", e.getToolCallName(),
+                    "result", maskPii(e.getDelta())));
+        }
+        if (event instanceof ToolResultDataDeltaEvent e) {
+            Object data = e.getData();
+            return format("tool_result", mapOf(
+                    "name", e.getToolCallName(),
+                    "result", data == null ? null : maskPii(String.valueOf(data))));
         }
         if (event instanceof ToolResultEndEvent e) {
             return format("tool_result", mapOf(
@@ -99,14 +158,41 @@ public class AgentEventSseMapper {
                     "finished", true));
         }
 
-        // ─── Reflexion 反思提示 ───
+        // ─── 数据块 (data) ───
+        if (event instanceof DataBlockStartEvent) {
+            return format("data", mapOf("active", true));
+        }
+        if (event instanceof DataBlockDeltaEvent e) {
+            return format("data", mapOf("delta", e.getDelta()));
+        }
+        if (event instanceof DataBlockEndEvent) {
+            return format("data", mapOf("delta", "", "isLast", true));
+        }
+
+        // ─── 模型调用 (trace: model/tokens/latency) ───
+        if (event instanceof ModelCallStartEvent) {
+            return format("trace", mapOf("phase", "start"));
+        }
+        if (event instanceof ModelCallEndEvent e) {
+            ChatUsage u = e.getUsage();
+            return format("trace", mapOf(
+                    "phase", "end",
+                    "inputTokens", u == null ? null : u.getInputTokens(),
+                    "outputTokens", u == null ? null : u.getOutputTokens(),
+                    "totalTokens", u == null ? null : u.getTotalTokens(),
+                    "latencySec", u == null ? null : u.getTime()));
+        }
+
+        // ─── Reflexion 反思提示 (hint) ───
         if (event instanceof HintBlockEvent e) {
             return format("hint", mapOf("hint", e.getHint()));
         }
 
-        // ─── Agent 结果 (最终汇总) ───
-        if (event instanceof AgentResultEvent) {
-            return format("done", mapOf());
+        // ─── Agent 结果 (done, result 文本经 maskPii) ───
+        if (event instanceof AgentResultEvent e) {
+            Msg result = e.getResult();
+            String text = result == null ? null : maskPii(result.getTextContent());
+            return format("done", mapOf("result", text));
         }
 
         // ─── 自定义事件 (护栏拦截等) ───
@@ -130,12 +216,48 @@ public class AgentEventSseMapper {
             return format("data", mapOf("type", e.getName(), "data", e.getValue()));
         }
 
-        // 思考阶段事件 → thinking
+        // ─── HITL 确认 ───
+        if (event instanceof RequireUserConfirmEvent e) {
+            return format("hitl", mapOf(
+                    "toolCalls", e.getToolCalls() == null ? null : e.getToolCalls().toString()));
+        }
+        if (event instanceof UserConfirmResultEvent e) {
+            return format("data", mapOf(
+                    "type", "user_confirm_result",
+                    "results", e.getConfirmResults() == null ? null : e.getConfirmResults().toString()));
+        }
+
+        // ─── 子 agent / 外部执行 ───
+        if (event instanceof SubagentExposedEvent e) {
+            return format("data", mapOf(
+                    "type", "subagent_exposed",
+                    "subagentId", e.getSubagentId(),
+                    "label", e.getLabel()));
+        }
+        if (event instanceof RequireExternalExecutionEvent e) {
+            return format("data", mapOf(
+                    "type", "require_external_execution",
+                    "toolCalls", e.getToolCalls() == null ? null : e.getToolCalls().toString()));
+        }
+        if (event instanceof ExternalExecutionResultEvent e) {
+            return format("data", mapOf(
+                    "type", "external_execution_result",
+                    "toolResults", e.getToolResults() == null ? null : e.getToolResults().toString()));
+        }
+        if (event instanceof AllToolsDeniedEvent e) {
+            return format("error", mapOf(
+                    "error", "所有工具调用被拒绝",
+                    "denied", e.getDeniedToolCalls() == null ? null : e.getDeniedToolCalls().toString()));
+        }
+
+        // ─── 其余按 type 兜底分发 ───
         switch (type) {
-            case THINKING_BLOCK_START, THINKING_BLOCK_END -> {
-                return format("thinking", mapOf("active", type == AgentEventType.THINKING_BLOCK_START));
-            }
             case AGENT_START -> {
+                if (event instanceof AgentStartEvent e) {
+                    return format("session", mapOf(
+                            "name", e.getName(),
+                            "role", e.getRole()));
+                }
                 return format("session", mapOf());
             }
             case AGENT_END -> {

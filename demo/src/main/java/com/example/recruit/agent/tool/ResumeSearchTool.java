@@ -1,8 +1,7 @@
 package com.example.recruit.agent.tool;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.recruit.dal.entity.Resume;
-import com.example.recruit.dal.mapper.ResumeMapper;
+import com.example.recruit.service.ResumeService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import org.springframework.stereotype.Component;
@@ -15,16 +14,16 @@ import java.util.Map;
 /**
  * 通用简历搜索工具 (复刻自文档 §8.2 ResumeSearchTool)。
  *
- * <p>多参数可选的通用搜索，替代 N 个按字段逐个搜索的工具。所有参数可选，
- * LLM 按需组合调用。底层用 MyBatis-Plus 动态 WHERE。
+ * <p>P1 分层后只做：参数校验 + 调 {@link ResumeService#search} + 结果摘要。
+ * Tool 不注入 Mapper、不写业务 SQL。多参数可选通用搜索，所有参数可选，LLM 按需组合。
  */
 @Component
 public class ResumeSearchTool {
 
-    private final ResumeMapper resumeMapper;
+    private final ResumeService resumeService;
 
-    public ResumeSearchTool(ResumeMapper resumeMapper) {
-        this.resumeMapper = resumeMapper;
+    public ResumeSearchTool(ResumeService resumeService) {
+        this.resumeService = resumeService;
     }
 
     @Tool(
@@ -46,31 +45,17 @@ public class ResumeSearchTool {
             @ToolParam(name = "minExperience", description = "最低工作年限（可选，整数）")
             Integer minExperience) {
 
-        LambdaQueryWrapper<Resume> wrapper = new LambdaQueryWrapper<Resume>()
-                .eq(name != null && !name.isBlank(), Resume::getCandidateName, name)
-                .like(school != null && !school.isBlank(), Resume::getParsedJson, school)
-                .like(education != null && !education.isBlank(), Resume::getParsedJson, education)
-                .like(major != null && !major.isBlank(), Resume::getParsedJson, major)
-                .like(intendedPosition != null && !intendedPosition.isBlank(), Resume::getParsedJson, intendedPosition)
-                .orderByDesc(Resume::getCreatedAt)
-                .last("LIMIT 20");
-
-        try {
-            List<Resume> resumes = resumeMapper.selectList(wrapper);
-            List<Map<String, Object>> result = new ArrayList<>();
-            for (Resume r : resumes) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("resume_id", r.getId());
-                item.put("name", r.getCandidateName());
-                item.put("status", r.getStatus());
-                item.put("summary", buildSummary(r));
-                result.add(item);
-            }
-            return result;
-        } catch (Exception e) {
-            // H2/Mock 模式下 parsed_json 条件可能不支持，回退全表
-            return fallbackList();
+        List<Resume> resumes = resumeService.search(name, school, education, major, intendedPosition, minExperience);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Resume r : resumes) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("resume_id", r.getId());
+            item.put("name", r.getCandidateName());
+            item.put("status", r.getStatus());
+            item.put("summary", buildSummary(r));
+            result.add(item);
         }
+        return result;
     }
 
     /** 从 parsedJson 拼接简短摘要。 */
@@ -97,15 +82,5 @@ public class ResumeSearchTool {
         } catch (Throwable t) {
             return "";
         }
-    }
-
-    private List<Map<String, Object>> fallbackList() {
-        List<Map<String, Object>> result = new ArrayList<>();
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("resume_id", 1);
-        item.put("name", "[Mock] 张三");
-        item.put("summary", "意向:Java后端; 技能:Java Spring MySQL Redis");
-        result.add(item);
-        return result;
     }
 }
