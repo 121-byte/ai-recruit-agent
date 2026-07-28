@@ -1,6 +1,7 @@
 package com.example.recruit.controller;
 
 import com.example.recruit.dal.entity.Resume;
+import com.example.recruit.llm.FileParserUtil;
 import com.example.recruit.service.ResumeService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -39,18 +40,41 @@ import java.util.Map;
 public class ResumeController {
 
     private final ResumeService resumeService;
+    private final FileParserUtil fileParserUtil;
 
-    public ResumeController(ResumeService resumeService) {
+    public ResumeController(ResumeService resumeService, FileParserUtil fileParserUtil) {
         this.resumeService = resumeService;
+        this.fileParserUtil = fileParserUtil;
     }
 
     @GetMapping
-    public List<Resume> list() {
+    public List<Resume> list(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String intendedPosition,
+            @RequestParam(required = false) String education) {
         try {
+            boolean hasParams = (keyword != null && !keyword.isBlank())
+                    || (status != null && !status.isBlank())
+                    || (intendedPosition != null && !intendedPosition.isBlank())
+                    || (education != null && !education.isBlank());
+            if (hasParams) {
+                return resumeService.search(keyword, status, intendedPosition, education);
+            }
             return resumeService.listAll();
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    @GetMapping("/intended-positions")
+    public List<String> intendedPositions() {
+        return resumeService.listIntendedPositions();
+    }
+
+    @GetMapping("/educations")
+    public List<String> educations() {
+        return resumeService.listEducations();
     }
 
     @GetMapping("/{id}")
@@ -95,11 +119,28 @@ public class ResumeController {
 
     @PostMapping("/upload")
     public Map<String, Object> upload(@RequestParam("file") MultipartFile file) {
-        // Mock 占位:不真正解析文件, 仅返回文件名与大小。
         Map<String, Object> resp = new LinkedHashMap<>();
-        resp.put("fileName", file == null ? null : file.getOriginalFilename());
-        resp.put("size", file == null ? 0L : file.getSize());
-        resp.put("note", "mock upload, not parsed");
+        if (file == null || file.isEmpty()) {
+            resp.put("uploaded", false);
+            resp.put("message", "file is empty");
+            return resp;
+        }
+        try {
+            String fileName = file.getOriginalFilename();
+            String rawText = fileParserUtil.parse(fileName, file.getBytes());
+            Resume resume = new Resume();
+            resume.setCandidateName(candidateNameFromFile(fileName));
+            resume.setRawText(rawText);
+            resume.setStatus("pending");
+            Resume created = resumeService.create(resume);
+            resp.put("uploaded", true);
+            resp.put("resume", created);
+            resp.put("fileName", fileName);
+            resp.put("size", file.getSize());
+        } catch (Exception e) {
+            resp.put("uploaded", false);
+            resp.put("message", e.getMessage());
+        }
         return resp;
     }
 
@@ -110,5 +151,17 @@ public class ResumeController {
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    private String candidateNameFromFile(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "未命名候选人";
+        }
+        String name = fileName;
+        int dot = name.lastIndexOf('.');
+        if (dot > 0) {
+            name = name.substring(0, dot);
+        }
+        return name.replaceAll("[_\\-]+", " ").trim();
     }
 }

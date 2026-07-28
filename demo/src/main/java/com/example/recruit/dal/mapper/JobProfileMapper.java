@@ -31,4 +31,38 @@ public interface JobProfileMapper extends BaseMapper<JobProfile> {
             "ORDER BY created_at DESC" +
             "</script>")
     List<JobProfile> selectByFilter(@Param("status") String status);
+
+    /**
+     * 多条件搜索/筛选岗位。
+     */
+    @Select("<script>" +
+            "SELECT * FROM job_profile WHERE 1=1 " +
+            "<if test='keyword != null and keyword != \"\"'>AND (" +
+            "  title ILIKE '%' || #{keyword} || '%'" +
+            "  OR department ILIKE '%' || #{keyword} || '%'" +
+            "  OR location ILIKE '%' || #{keyword} || '%'" +
+            "  OR level ILIKE '%' || #{keyword} || '%'" +
+            "  OR category ILIKE '%' || #{keyword} || '%'" +
+            ")</if>" +
+            "<if test='status != null and status != \"\"'>AND status = #{status} </if>" +
+            "<if test='department != null and department != \"\"'>AND department = #{department} </if>" +
+            "<if test='level != null and level != \"\"'>AND level = #{level} </if>" +
+            "ORDER BY created_at DESC" +
+            "</script>")
+    List<JobProfile> search(@Param("keyword") String keyword,
+                            @Param("status") String status,
+                            @Param("department") String department,
+                            @Param("level") String level);
+
+    /**
+     * 查询所有不重复的部门列表。
+     */
+    @Select("SELECT DISTINCT department FROM job_profile WHERE department IS NOT NULL AND department != '' ORDER BY department")
+    List<String> listDepartments();
+
+    /**
+     * 查询所有不重复的职级列表。
+     */
+    @Select("SELECT DISTINCT level FROM job_profile WHERE level IS NOT NULL AND level != '' ORDER BY level")
+    List<String> listLevels();
 }

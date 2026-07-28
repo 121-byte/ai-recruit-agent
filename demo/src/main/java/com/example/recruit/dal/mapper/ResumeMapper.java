@@ -39,6 +39,43 @@ public interface ResumeMapper extends BaseMapper<Resume> {
     List<Resume> selectByIds(@Param("idsSql") String idsSql);
 
     /**
+     * 多条件搜索/筛选简历 (parsed_json->>intended_position 等 JSONB 字段)。
+     */
+    @Select("<script>" +
+            "SELECT * FROM resume WHERE 1=1 " +
+            "<if test='keyword != null and keyword != \"\"'>AND (" +
+            "  candidate_name ILIKE '%' || #{keyword} || '%'" +
+            "  OR raw_text ILIKE '%' || #{keyword} || '%'" +
+            "  OR parsed_json->>'skills' ILIKE '%' || #{keyword} || '%'" +
+            "  OR parsed_json->>'intended_position' ILIKE '%' || #{keyword} || '%'" +
+            "  OR parsed_json->>'school' ILIKE '%' || #{keyword} || '%'" +
+            "  OR parsed_json->>'major' ILIKE '%' || #{keyword} || '%'" +
+            ")</if>" +
+            "<if test='status != null and status != \"\"'>AND status = #{status} </if>" +
+            "<if test='intendedPosition != null and intendedPosition != \"\"'>" +
+            "  AND parsed_json->>'intended_position' = #{intendedPosition} </if>" +
+            "<if test='education != null and education != \"\"'>" +
+            "  AND parsed_json->>'education' = #{education} </if>" +
+            "ORDER BY created_at DESC" +
+            "</script>")
+    List<Resume> search(@Param("keyword") String keyword,
+                        @Param("status") String status,
+                        @Param("intendedPosition") String intendedPosition,
+                        @Param("education") String education);
+
+    /**
+     * 查询所有不重复的意向岗位 (parsed_json->>intended_position)。
+     */
+    @Select("SELECT DISTINCT parsed_json->>'intended_position' AS pos FROM resume WHERE parsed_json->>'intended_position' IS NOT NULL AND parsed_json->>'intended_position' != '' ORDER BY pos")
+    List<String> listIntendedPositions();
+
+    /**
+     * 查询所有不重复的学历 (parsed_json->>education)。
+     */
+    @Select("SELECT DISTINCT parsed_json->>'education' AS edu FROM resume WHERE parsed_json->>'education' IS NOT NULL AND parsed_json->>'education' != '' ORDER BY edu")
+    List<String> listEducations();
+
+    /**
      * 按状态查询简历。
      */
     @Select("SELECT * FROM resume WHERE status = #{status} ORDER BY created_at DESC")

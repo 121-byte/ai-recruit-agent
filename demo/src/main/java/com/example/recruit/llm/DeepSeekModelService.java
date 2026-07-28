@@ -100,6 +100,34 @@ public class DeepSeekModelService {
         return doChatStream(stripModelPrefix(props.getAi().getModelPrimary()), systemPrompt, userMessage);
     }
 
+    /**
+     * 流式对话 (带 token usage)。OpenAI 兼容接口在 stream_options.include_usage=true 时,
+     * 会在流的末尾追加一个携带 usage 的 chunk (delta 为空)。该方法在每个 chunk 上带出
+     * delta 文本与 (仅末块) inputTokens/outputTokens, 供调用方按轮累计 token。
+     */
+    public reactor.core.publisher.Flux<StreamChunk> chatStreamWithUsage(String systemPrompt, String userMessage) {
+        if (useMock()) {
+            String reply = mockReply(userMessage);
+            return reactor.core.publisher.Flux.create(sink -> {
+                for (char c : reply.toCharArray()) {
+                    sink.next(new StreamChunk(String.valueOf(c), 0, 0));
+                }
+                sink.complete();
+            });
+        }
+        return doChatStreamWithUsage(stripModelPrefix(props.getAi().getModelPrimary()), systemPrompt, userMessage);
+    }
+
+    /**
+     * 流式对话的单个 chunk: delta 为本轮增量文本, inputTokens/outputTokens 仅在含 usage 的末块非零。
+     */
+    public record StreamChunk(String delta, int inputTokens, int outputTokens) {
+        public int totalTokens() {
+            return inputTokens + outputTokens;
+        }
+    }
+
+
     // ─────────────────── 内部实现 ───────────────────
 
     private String doChat(String model, String systemPrompt, String userMessage) {
@@ -161,8 +189,27 @@ public class DeepSeekModelService {
     }
 
     private reactor.core.publisher.Flux<String> doChatStream(String model, String systemPrompt, String userMessage) {
-        ObjectNode requestBody = buildRequestBody(model, systemPrompt, userMessage);
-        requestBody.put("stream", true);
+        ObjectNode requestBody = buildRequestBody(model, systemPrompt, userMessage, true);
+        return webClient.post()
+                .uri("/chat/completions")
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToFlux(String.class)
+                .timeout(Duration.ofSeconds(60))
+                .filter(chunk -> !chunk.equals("[DONE]"))
+                .map(chunk -> extractDeltaText(chunk))
+                .filter(text -> !text.isEmpty())
+                .onErrorResume(e -> {
+                    log.warn("LLM stream error, fallback to mock: {}", e.getMessage());
+                    return reactor.core.publisher.Flux.just(mockReply(userMessage));
+                });
+    }
+
+    /**
+     * 带 usage 的流式: stream_options.include_usage=true, 末块携带 prompt_tokens/completion_tokens。
+     */
+    private reactor.core.publisher.Flux<StreamChunk> doChatStreamWithUsage(String model, String systemPrompt, String userMessage) {
+        ObjectNode requestBody = buildRequestBody(model, systemPrompt, userMessage, true);
         return webClient.post()
                 .uri("/chat/completions")
                 .bodyValue(requestBody)
@@ -173,26 +220,38 @@ public class DeepSeekModelService {
                 .map(chunk -> {
                     try {
                         JsonNode node = mapper.readTree(chunk);
-                        JsonNode delta = node.path("choices").path(0).path("delta");
-                        String text = delta.path("content").asText("");
-                        // deepseek-v4-flash 推理模型: content 为空时回退 reasoning_content 增量
-                        if (text.isEmpty()) {
-                            text = delta.path("reasoning_content").asText("");
-                        }
-                        return text;
+                        String delta = extractDeltaText(chunk);
+                        JsonNode usage = node.path("usage");
+                        int inTok = usage.isMissingNode() ? 0 : usage.path("prompt_tokens").asInt(0);
+                        int outTok = usage.isMissingNode() ? 0 : usage.path("completion_tokens").asInt(0);
+                        return new StreamChunk(delta, inTok, outTok);
                     } catch (Exception e) {
-                        return "";
+                        return new StreamChunk("", 0, 0);
                     }
                 })
-                .filter(text -> !text.isEmpty())
                 .onErrorResume(e -> {
-                    log.warn("LLM stream error, fallback to mock: {}", e.getMessage());
-                    return reactor.core.publisher.Flux.just(mockReply(userMessage));
+                    log.warn("LLM stream(usage) error, fallback to mock: {}", e.getMessage());
+                    return reactor.core.publisher.Flux.just(new StreamChunk(mockReply(userMessage), 0, 0));
                 });
     }
 
+    /** 从一个 SSE 数据 chunk 中提取 delta 文本 (含 reasoning_content 回退)。 */
+    private String extractDeltaText(String chunk) {
+        try {
+            JsonNode node = mapper.readTree(chunk);
+            JsonNode delta = node.path("choices").path(0).path("delta");
+            String text = delta.path("content").asText("");
+            if (text.isEmpty()) {
+                text = delta.path("reasoning_content").asText("");
+            }
+            return text == null ? "" : text;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     private String postChat(String model, String systemPrompt, String userMessage, boolean stream) {
-        ObjectNode requestBody = buildRequestBody(model, systemPrompt, userMessage);
+        ObjectNode requestBody = buildRequestBody(model, systemPrompt, userMessage, stream);
         if (stream) {
             requestBody.put("stream", true);
         }
@@ -205,7 +264,7 @@ public class DeepSeekModelService {
                 .block();
     }
 
-    private ObjectNode buildRequestBody(String model, String systemPrompt, String userMessage) {
+    private ObjectNode buildRequestBody(String model, String systemPrompt, String userMessage, boolean includeUsage) {
         ObjectNode requestBody = mapper.createObjectNode();
         requestBody.put("model", model);
         requestBody.put("temperature", 0.7);
@@ -218,6 +277,13 @@ public class DeepSeekModelService {
         ObjectNode userMsg = messages.addObject();
         userMsg.put("role", "user");
         userMsg.put("content", userMessage);
+
+        if (includeUsage) {
+            // OpenAI 兼容: 流式时在末块返回 usage (prompt_tokens/completion_tokens)
+            ObjectNode streamOptions = mapper.createObjectNode();
+            streamOptions.put("include_usage", true);
+            requestBody.set("stream_options", streamOptions);
+        }
         return requestBody;
     }
 

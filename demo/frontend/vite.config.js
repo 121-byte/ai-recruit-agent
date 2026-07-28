@@ -33,6 +33,27 @@ export default defineConfig({
   build: {
     target: 'es2020',
     outDir: 'dist',
-    sourcemap: false
+    sourcemap: false,
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('node_modules/vue') || id.includes('node_modules/@vue')) {
+            return 'vendor-vue'
+          }
+          if (id.includes('node_modules/ant-design-vue')) {
+            return 'vendor-antd'
+          }
+          if (id.includes('node_modules/@ant-design/icons-vue')) {
+            return 'vendor-icons'
+          }
+          if (id.includes('node_modules/axios') || id.includes('node_modules/dayjs') || id.includes('node_modules/pinia') || id.includes('node_modules/vue-router')) {
+            return 'vendor-core'
+          }
+          return 'vendor'
+        }
+      }
+    }
   }
 })

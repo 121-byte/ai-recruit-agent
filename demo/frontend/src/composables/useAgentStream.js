@@ -1,7 +1,13 @@
 import { ref, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import { useAuthStore } from '@/store/auth'
-import { listSessions, createSession, deleteSession } from '@/api'
+import {
+  listSessions,
+  createSession,
+  deleteSession,
+  listSessionMessages,
+  getSessionTokens
+} from '@/api'
 
 /**
  * Agent SSE 流处理组合式函数（§12.3）
@@ -23,7 +29,10 @@ export function useAgentStream() {
   const currentTrace = ref(null) // 追踪数据
   const pushMessages = ref([]) // 推送消息
   const turnStats = ref(null) // 统计
-  const currentSessionTokens = ref({}) // Token 统计
+  const currentSessionTokens = ref({ total: 0, input: 0, output: 0 }) // 当前会话累计 Token
+  const allSessionsTokens = computed(() =>
+    sessions.value.reduce((a, s) => a + (s.tokenCount || 0), 0)
+  )
 
   // 中断控制器
   let abortController = null
@@ -50,6 +59,8 @@ export function useAgentStream() {
       plan: null,
       trace: null,
       stats: null,
+      tokens: null, // 本轮 token 消耗 {input, output, total, estimated}
+      showTokens: false, // 是否展开 token 明细
       timestamp: Date.now()
     }
     messages.value.push(msg)
@@ -121,20 +132,28 @@ export function useAgentStream() {
       case 'trace':
         currentTrace.value = data
         assistantMsg.trace = data
-        if (data.tokens) {
-          currentSessionTokens.value = {
-            ...currentSessionTokens.value,
-            ...data.tokens
-          }
-        }
         break
       case 'push':
         pushMessages.value.push(data)
         break
-      case 'stats':
+      case 'stats': {
+        // 本轮 token 消耗 (后端每轮末发一次, 字段 totalTokens/inputTokens/outputTokens)
+        const tTotal = data.totalTokens ?? data.tokens?.total ?? 0
+        const tIn = data.inputTokens ?? data.tokens?.input ?? 0
+        const tOut = data.outputTokens ?? data.tokens?.output ?? 0
+        const estimated = data.estimated === true
         turnStats.value = data
         assistantMsg.stats = data
+        // 写入本轮消息的 token 明细 (供点击查看)
+        assistantMsg.tokens = { input: tIn, output: tOut, total: tTotal, estimated }
+        // 累计到当前会话合计 (发送结束后会用 DB 值覆盖, 此处仅流式期即时反馈)
+        currentSessionTokens.value = {
+          total: (currentSessionTokens.value.total || 0) + tTotal,
+          input: (currentSessionTokens.value.input || 0) + tIn,
+          output: (currentSessionTokens.value.output || 0) + tOut
+        }
         break
+      }
       case 'error':
         assistantMsg.content += `\n[错误] ${data.error || data.message || ''}`
         assistantMsg.thinking = false
@@ -251,6 +270,9 @@ export function useAgentStream() {
       assistantMsg.thinking = false
       sending.value = false
       abortController = null
+      // 发送结束: 刷新侧边栏 (新会话/累计 token) 与当前会话合计 (DB 权威值)
+      loadSessions()
+      refreshSessionTokens(sessionId.value)
     }
   }
 
@@ -284,10 +306,11 @@ export function useAgentStream() {
   async function newSession(title = '') {
     try {
       const data = await createSession(title)
-      const s = data || { sessionId: `session-${Date.now()}`, title: title || '新会话' }
-      sessionId.value = s.sessionId
+      const s = data || { id: `session-${Date.now()}`, title: title || '新会话' }
+      sessionId.value = s.id ?? s.sessionId
       sessions.value.unshift(s)
       messages.value = []
+      currentSessionTokens.value = { total: 0, input: 0, output: 0 }
       return s
     } catch (e) {
       message.error('创建会话失败')
@@ -295,12 +318,49 @@ export function useAgentStream() {
     }
   }
 
-  function selectSession(sid) {
+  async function selectSession(sid) {
     sessionId.value = sid
-    messages.value = []
     pendingHitl.value = null
     currentPlan.value = null
     currentTrace.value = null
+    turnStats.value = null
+    // 加载该会话历史消息 + token 合计
+    await loadSessionMessages(sid)
+    refreshSessionTokens(sid)
+  }
+
+  // 加载会话历史消息, 映射为内部 msg 结构 (含历史 token 明细)
+  async function loadSessionMessages(sid) {
+    try {
+      const list = await listSessionMessages(sid)
+      const arr = Array.isArray(list) ? list : list?.list || []
+      messages.value = arr.map((m) => ({
+        role: m.role,
+        content: m.content,
+        thinking: false,
+        toolCalls: [],
+        tokens: m.tokens != null ? { input: 0, output: m.tokens, total: m.tokens } : null,
+        showTokens: false,
+        timestamp: null
+      }))
+    } catch (e) {
+      messages.value = []
+    }
+  }
+
+  // 从 DB 刷新当前会话 token 合计 (权威值, 覆盖流式期估算)
+  async function refreshSessionTokens(sid) {
+    if (sid == null || sid === 'default') return
+    try {
+      const stats = await getSessionTokens(sid)
+      currentSessionTokens.value = {
+        total: stats?.total_tokens ?? stats?.totalTokens ?? 0,
+        input: stats?.input_tokens ?? stats?.inputTokens ?? 0,
+        output: stats?.output_tokens ?? stats?.outputTokens ?? 0
+      }
+    } catch (e) {
+      // 保留流式期累计值
+    }
   }
 
   async function removeSession(sid) {
@@ -323,6 +383,7 @@ export function useAgentStream() {
     currentPlan.value = null
     currentTrace.value = null
     turnStats.value = null
+    currentSessionTokens.value = { total: 0, input: 0, output: 0 }
   }
 
   return {
@@ -339,6 +400,7 @@ export function useAgentStream() {
     pushMessages,
     turnStats,
     currentSessionTokens,
+    allSessionsTokens,
     hasActiveToolCalls,
     // methods
     send,
@@ -349,6 +411,8 @@ export function useAgentStream() {
     selectSession,
     removeSession,
     clearMessages,
+    refreshSessionTokens,
+    loadSessionMessages,
     handleEvent
   }
 }

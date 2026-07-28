@@ -134,4 +134,32 @@ public class JobProfileService {
             return false;
         }
     }
+
+    /** 多条件搜索/筛选岗位。 */
+    public List<JobProfile> search(String keyword, String status, String department, String level) {
+        try {
+            return jobProfileMapper.search(keyword, status, department, level);
+        } catch (Exception e) {
+            log.warn("search job failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 获取所有部门列表。 */
+    public List<String> listDepartments() {
+        try {
+            return jobProfileMapper.listDepartments();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    /** 获取所有职级列表。 */
+    public List<String> listLevels() {
+        try {
+            return jobProfileMapper.listLevels();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
 }

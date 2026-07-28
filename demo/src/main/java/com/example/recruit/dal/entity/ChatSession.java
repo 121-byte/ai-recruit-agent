@@ -1,6 +1,7 @@
 package com.example.recruit.dal.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -26,4 +27,10 @@ public class ChatSession {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    /**
+     * 非持久化: 仅用于会话列表聚合该会话累计 token 数 (chat_message.tokens 求和)。
+     */
+    @TableField(exist = false)
+    private Long tokenCount;
 }

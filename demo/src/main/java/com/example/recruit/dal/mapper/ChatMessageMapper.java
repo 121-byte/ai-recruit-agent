@@ -27,6 +27,21 @@ public interface ChatMessageMapper extends BaseMapper<ChatMessage> {
     long sumTokensByAgentId(@Param("agentId") String agentId);
 
     /**
+     * 按用户 ID 汇总全部会话的 token 数 (join chat_session 关联 user_id)。
+     */
+    @Select("SELECT COALESCE(SUM(m.tokens), 0) FROM chat_message m " +
+            "JOIN chat_session s ON m.session_id = s.id WHERE s.user_id = #{userId}")
+    long sumTokensByUserId(@Param("userId") Long userId);
+
+    /**
+     * 按会话 ID + role 汇总 token 数 (user=input, assistant=output)。
+     */
+    @Select("SELECT COALESCE(SUM(tokens), 0) FROM chat_message " +
+            "WHERE session_id = #{sessionId} AND role = #{role}")
+    long sumTokensBySessionAndRole(@Param("sessionId") Long sessionId,
+                                    @Param("role") String role);
+
+    /**
      * 按会话 ID 统计消息数。
      */
     @Select("SELECT COUNT(*) FROM chat_message WHERE session_id = #{sessionId}")

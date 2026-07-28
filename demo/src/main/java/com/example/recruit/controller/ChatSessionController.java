@@ -88,18 +88,10 @@ public class ChatSessionController {
     public ResponseEntity<Map<String, Object>> getTokenSummary() {
         Long userId = currentUserId();
         List<ChatSession> sessions = chatSessionService.listSessions(userId);
-        long totalTokens = 0;
-        for (ChatSession s : sessions) {
-            try {
-                Map<String, Object> stats = chatSessionService.tokenStats(s.getId());
-                Object t = stats.get("total_tokens");
-                if (t instanceof Number n) {
-                    totalTokens += n.longValue();
-                }
-            } catch (Exception ignored) {
-                // 单会话统计失败不阻断聚合
-            }
-        }
+        // 侧边栏 tokenCount 已聚合, 直接求和, 避免逐会话查库
+        long totalTokens = sessions.stream()
+                .mapToLong(s -> s.getTokenCount() == null ? 0 : s.getTokenCount())
+                .sum();
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("userId", userId);
         summary.put("session_count", sessions.size());

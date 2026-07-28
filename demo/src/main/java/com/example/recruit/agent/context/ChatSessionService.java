@@ -34,13 +34,23 @@ public class ChatSessionService {
 
     public List<ChatSession> listSessions(Long userId) {
         try {
-            return sessionMapper.selectList(
-                    new LambdaQueryWrapper<ChatSession>()
-                            .eq(ChatSession::getUserId, userId)
-                            .orderByDesc(ChatSession::getUpdatedAt));
+            // 聚合每个会话的累计 token 数 (token_count → tokenCount)
+            return sessionMapper.listWithTokens(userId);
         } catch (Exception e) {
             log.warn("listSessions failed: {}", e.getMessage());
             return List.of();
+        }
+    }
+
+    /** 刷新会话 updated_at, 让最近活跃会话上浮排序。 */
+    public void touch(Long sessionId) {
+        if (sessionId == null) {
+            return;
+        }
+        try {
+            sessionMapper.touch(sessionId);
+        } catch (Exception e) {
+            log.warn("touch session failed: {}", e.getMessage());
         }
     }
 
@@ -107,17 +117,18 @@ public class ChatSessionService {
         return m;
     }
 
-    /** 会话 token 统计。 */
+    /** 会话 token 统计: total/input(role=user)/output(role=assistant)。 */
     public Map<String, Object> tokenStats(Long sessionId) {
         Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("session_id", sessionId);
         try {
-            List<ChatMessage> msgs = getMessages(sessionId);
-            int total = msgs.stream().mapToInt(m -> m.getTokens() == null ? 0 : m.getTokens()).sum();
-            stats.put("session_id", sessionId);
-            stats.put("message_count", msgs.size());
-            stats.put("total_tokens", total);
+            long input = messageMapper.sumTokensBySessionAndRole(sessionId, "user");
+            long output = messageMapper.sumTokensBySessionAndRole(sessionId, "assistant");
+            stats.put("message_count", messageMapper.countBySessionId(sessionId));
+            stats.put("input_tokens", input);
+            stats.put("output_tokens", output);
+            stats.put("total_tokens", input + output);
         } catch (Exception e) {
-            stats.put("session_id", sessionId);
             stats.put("total_tokens", 0);
         }
         return stats;

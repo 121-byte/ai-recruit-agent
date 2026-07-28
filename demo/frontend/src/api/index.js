@@ -188,6 +188,16 @@ export function analyzeJob(jobId) {
   return request.post(`/jobs/${jobId}/analyze`)
 }
 
+// 部门列表（筛选用）
+export function listDepartments() {
+  return request.get('/jobs/departments')
+}
+
+// 职级列表（筛选用）
+export function listLevels() {
+  return request.get('/jobs/levels')
+}
+
 // ===== 简历（/api/resumes） =====
 
 // 简历列表
@@ -233,6 +243,16 @@ export function analyzeResume(resumeId) {
 // 简历对比
 export function compareResumes(resumeIds) {
   return request.post('/resumes/compare', { resumeIds })
+}
+
+// 意向岗位列表（筛选用）
+export function listIntendedPositions() {
+  return request.get('/resumes/intended-positions')
+}
+
+// 学历列表（筛选用）
+export function listEducations() {
+  return request.get('/resumes/educations')
 }
 
 // ===== 匹配（/api/matches） =====

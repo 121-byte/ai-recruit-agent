@@ -8,6 +8,7 @@ import com.example.recruit.agent.event.AgentEventSseMapper;
 import com.example.recruit.agent.routing.Intent;
 import com.example.recruit.agent.routing.IntentRouter;
 import com.example.recruit.agent.routing.IntentType;
+import com.example.recruit.dal.entity.ChatSession;
 import com.example.recruit.llm.DeepSeekModelService;
 import com.example.recruit.llm.LangFuseTraceService;
 import com.example.recruit.memory.AutoMemoryExtractor;
@@ -20,7 +21,9 @@ import com.example.recruit.llm.JsonGuard;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.ModelCallEndEvent;
 import io.agentscope.core.message.UserMessage;
+import io.agentscope.core.model.ChatUsage;
 import io.agentscope.harness.agent.HarnessAgent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -115,69 +118,154 @@ public class ConversationAgentService {
 
     /**
      * 主入口：处理用户消息，返回 SSE 事件流。
+     *
+     * <p>用 {@link Flux#defer} 包裹, 使以下副作用在订阅时执行 (每次发送独立上下文):
+     * <ol>
+     *   <li>用户消息追加 Redis 短期记忆</li>
+     *   <li>会话解析: 数字 conversationId 直接复用; 否则为当前用户新建 chat_session,
+     *       并以 {@code session} SSE 事件把真实 sessionId 回传前端</li>
+     *   <li>意图分类 + 上下文组装</li>
+     *   <li>分流 (CHITCHAT/BATCH/HITL/SINGLE_TOOL/COMPOSITE)</li>
+     *   <li>doOnNext 收集 assistant 回复, doOnComplete 落库消息+token 与后处理</li>
+     * </ol>
      */
     public Flux<String> stream(String agentId, String conversationId, String userMessage) {
-        long turnStartMs = System.currentTimeMillis();
-        String sessionKey = "agent:session:" + agentId;
+        return Flux.defer(() -> {
+            long turnStartMs = System.currentTimeMillis();
+            TurnTokens holder = new TurnTokens();
 
-        // 1. 用户消息追加到 Redis 短期记忆
-        redisSessionMemory.addMessage(agentId, "user", userMessage);
+            // 1. 用户消息追加到 Redis 短期记忆
+            redisSessionMemory.addMessage(agentId, "user", userMessage);
 
-        // 2. 意图分类
-        Intent intent = intentRouter.classify(userMessage);
-        log.info("Intent: {} (conf={}) for: {}", intent.type(), intent.confidence(),
-                userMessage.length() > 50 ? userMessage.substring(0, 50) + "..." : userMessage);
+            // 2. 会话解析: 数字 sessionId 直接复用; 否则为当前用户新建会话
+            Long userId = parseUserId(agentId);
+            Long sessionDbId = resolveSessionId(conversationId, userId, agentId, userMessage);
+            String sessionEvent = sseFormat("session",
+                    Map.of("sessionId", String.valueOf(sessionDbId)));
 
-        // 3. 上下文组装 (注入记忆快照)
-        try {
-            contextAssembler.assemble(conversationId, userMessage, agentId);
-        } catch (Exception e) {
-            log.warn("context assemble failed: {}", e.getMessage());
-        }
+            // 3. 意图分类
+            Intent intent = intentRouter.classify(userMessage);
+            log.info("Intent: {} (conf={}) for: {}", intent.type(), intent.confidence(),
+                    userMessage.length() > 50 ? userMessage.substring(0, 50) + "..." : userMessage);
 
-        // 4. 分流
-        Flux<String> body = switch (intent.type()) {
-            case CHITCHAT -> streamChichat(agentId, conversationId, userMessage);
-            case BATCH_INDEPENDENT -> streamBatch(agentId, conversationId, userMessage);
-            case HITL -> formatHitl(agentId, conversationId, userMessage);
-            case SINGLE_TOOL -> streamReAct(agentId, conversationId, userMessage);
-            case COMPOSITE -> streamSupervisor(agentId, conversationId, userMessage);
-        };
+            // 4. 上下文组装 (注入记忆快照)
+            try {
+                contextAssembler.assemble(String.valueOf(sessionDbId), userMessage, agentId);
+            } catch (Exception e) {
+                log.warn("context assemble failed: {}", e.getMessage());
+            }
 
-        // 5. doOnComplete 异步后处理
-        StringBuilder assistantReply = new StringBuilder();
-        return body
-                .doOnNext(sse -> {
-                    // 用 JSON 解析提取 delta (替代脆弱的 indexOf, 避免转义/特殊字符截错)
-                    if (sse != null && sse.startsWith("event: text")) {
-                        try {
-                            int dataStart = sse.indexOf("data: ");
-                            if (dataStart >= 0) {
-                                String jsonStr = sse.substring(dataStart + 6).trim();
-                                JsonNode node = JsonGuard.parseJsonSafe(jsonStr);
-                                if (node != null) {
-                                    String delta = node.path("delta").asText("");
-                                    if (!delta.isEmpty()) {
-                                        assistantReply.append(delta);
+            // 5. 分流
+            String convId = String.valueOf(sessionDbId);
+            Flux<String> body = switch (intent.type()) {
+                case CHITCHAT -> streamChichat(agentId, convId, userMessage, holder);
+                case BATCH_INDEPENDENT -> streamBatch(agentId, convId, userMessage, holder);
+                case HITL -> formatHitl(agentId, convId, userMessage, holder);
+                case SINGLE_TOOL -> streamReAct(agentId, convId, userMessage, holder);
+                case COMPOSITE -> streamSupervisor(agentId, convId, userMessage, holder);
+            };
+
+            // 6. 收集 assistant 回复 + doOnComplete 异步后处理
+            StringBuilder assistantReply = new StringBuilder();
+            Flux<String> pipeline = body
+                    .doOnNext(sse -> {
+                        // 用 JSON 解析提取 delta (替代脆弱的 indexOf, 避免转义/特殊字符截错)
+                        if (sse != null && sse.startsWith("event: text")) {
+                            try {
+                                int dataStart = sse.indexOf("data: ");
+                                if (dataStart >= 0) {
+                                    String jsonStr = sse.substring(dataStart + 6).trim();
+                                    JsonNode node = JsonGuard.parseJsonSafe(jsonStr);
+                                    if (node != null) {
+                                        String delta = node.path("delta").asText("");
+                                        if (!delta.isEmpty()) {
+                                            assistantReply.append(delta);
+                                        }
                                     }
                                 }
-                            }
-                        } catch (Exception ignored) { }
-                    }
-                })
-                .doOnComplete(() -> finalizeTurn(agentId, conversationId, userMessage,
-                        assistantReply.toString(), turnStartMs))
-                .onErrorResume(e -> {
-                    log.error("stream error", e);
-                    return Flux.just(sseError("Agent 流式响应异常: " + e.getMessage()),
-                            sseFormat("done", Map.of()));
-                });
+                            } catch (Exception ignored) { }
+                        }
+                    })
+                    .doOnComplete(() -> finalizeTurn(agentId, convId, userMessage,
+                            assistantReply.toString(), turnStartMs, sessionDbId, holder))
+                    .onErrorResume(e -> {
+                        log.error("stream error", e);
+                        return Flux.just(sseError("Agent 流式响应异常: " + e.getMessage()),
+                                sseFormat("done", Map.of()));
+                    });
+
+            // 先发 session 事件 (前端据其更新当前 sessionId), 再发对话体
+            return Flux.just(sessionEvent).concatWith(pipeline);
+        });
+    }
+
+    /**
+     * 解析 agentId ("hr:123") 得到 userId; 解析失败回退 0。
+     */
+    private Long parseUserId(String agentId) {
+        if (agentId == null || !agentId.startsWith("hr:")) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(agentId.substring(3));
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    /**
+     * 会话解析: conversationId 为数字 → 直接用作 chat_session.id;
+     * 否则 ("default"/空) 为当前用户新建会话, 标题取 userMessage 前 30 字。
+     */
+    private Long resolveSessionId(String conversationId, Long userId, String agentId, String userMessage) {
+        if (conversationId != null) {
+            try {
+                return Long.parseLong(conversationId);
+            } catch (NumberFormatException ignored) {
+                // 非数字 → 新建会话
+            }
+        }
+        String title = userMessage == null || userMessage.isBlank()
+                ? "新对话"
+                : (userMessage.length() > 30 ? userMessage.substring(0, 30) : userMessage);
+        ChatSession s = chatSessionService.createSession(userId, title, agentId);
+        return s == null ? null : s.getId();
+    }
+
+    /**
+     * 单轮 token 累计 holder。CHITCHAT/SINGLE_TOOL/COMPOSITE 路径由 ModelCallEndEvent
+     * 或流式 usage 真实累计; BATCH 路径字符估算并标记 estimated。
+     */
+    static final class TurnTokens {
+        int input;
+        int output;
+        boolean estimated;
+
+        void add(ChatUsage u) {
+            if (u == null) {
+                return;
+            }
+            try {
+                input += u.getInputTokens();
+                output += u.getOutputTokens();
+            } catch (Throwable ignored) {
+            }
+        }
+
+        void add(int in, int out) {
+            input += in;
+            output += out;
+        }
+
+        int total() {
+            return input + output;
+        }
     }
 
     // ─────────────────── 分流方法 (文档 §4.1) ───────────────────
 
-    /** CHITCHAT：不走 Agent 框架，直接调 chatStream，取最近 3 条历史，1 次 LLM 调用。 */
-    private Flux<String> streamChichat(String agentId, String conversationId, String userMessage) {
+    /** CHITCHAT：不走 Agent 框架，直接调 chatStreamWithUsage，取最近 3 条历史，1 次 LLM 调用并采集真实 token。 */
+    private Flux<String> streamChichat(String agentId, String conversationId, String userMessage, TurnTokens holder) {
         List<String> history = redisSessionMemory.getRecent(agentId, 3);
         StringBuilder ctx = new StringBuilder();
         for (String entry : history) {
@@ -187,14 +275,28 @@ public class ConversationAgentService {
             ctx.append(role).append(": ").append(content).append('\n');
         }
         String sys = "你是 AI 招聘助手，可以帮 HR 完成招聘全流程。简洁友好地回答闲聊。\n历史:\n" + ctx;
-        return deepSeekModelService.chatStream(sys, userMessage)
+        return deepSeekModelService.chatStreamWithUsage(sys, userMessage)
+                .map(chunk -> {
+                    // 末块携带 usage (delta 为空), 累计到 holder
+                    if (chunk.inputTokens() > 0 || chunk.outputTokens() > 0) {
+                        holder.add(chunk.inputTokens(), chunk.outputTokens());
+                    }
+                    return chunk.delta();
+                })
+                .filter(delta -> !delta.isEmpty())
                 .map(delta -> sseFormat("text", Map.of("delta", delta, "isLast", false)))
-                .concatWith(Flux.just(sseFormat("text", Map.of("delta", "", "isLast", true))))
-                .concatWith(Flux.just(sseFormat("done", Map.of())));
+                .concatWith(Flux.defer(() -> Flux.just(
+                        sseFormat("text", Map.of("delta", "", "isLast", true)),
+                        sseFormat("stats", Map.of(
+                                "totalTokens", holder.total(),
+                                "inputTokens", holder.input,
+                                "outputTokens", holder.output,
+                                "estimated", holder.estimated)),
+                        sseFormat("done", Map.of()))));
     }
 
-    /** BATCH_INDEPENDENT：调 ReWooExecutor.execute，结果包装为 SSE text 事件。 */
-    private Flux<String> streamBatch(String agentId, String conversationId, String userMessage) {
+    /** BATCH_INDEPENDENT：调 ReWooExecutor.execute，结果包装为 SSE text 事件。token 字符估算并标记 estimated。 */
+    private Flux<String> streamBatch(String agentId, String conversationId, String userMessage, TurnTokens holder) {
         return Flux.defer(() -> {
             // 先发 plan 事件
             String plan;
@@ -205,16 +307,26 @@ public class ConversationAgentService {
                 plan = "[]";
             }
             String result = reWooExecutor.execute(userMessage);
+            // ReWooExecutor 不暴露 token usage → 用字符估算 (约 4 字符/token) 并标记 estimated
+            int estIn = Math.max(1, userMessage == null ? 0 : userMessage.length() / 4);
+            int estOut = Math.max(1, result == null ? 0 : result.length() / 4);
+            holder.add(estIn, estOut);
+            holder.estimated = true;
             return Flux.just(
                     sseFormat("plan", Map.of("plan", plan)),
                     sseFormat("text", Map.of("delta", result, "isLast", false)),
                     sseFormat("text", Map.of("delta", "", "isLast", true)),
+                    sseFormat("stats", Map.of(
+                            "totalTokens", holder.total(),
+                            "inputTokens", holder.input,
+                            "outputTokens", holder.output,
+                            "estimated", true)),
                     sseFormat("done", Map.of()));
         });
     }
 
     /** HITL：生成人工确认事件，零 LLM 调用。保存上下文快照供 confirm 恢复。 */
-    private Flux<String> formatHitl(String agentId, String conversationId, String userMessage) {
+    private Flux<String> formatHitl(String agentId, String conversationId, String userMessage, TurnTokens holder) {
         String replyId = "hitl-" + System.currentTimeMillis();
         try {
             io.agentscope.core.agent.RuntimeContext ctx = sessionManager.getOrCreate(conversationId);
@@ -235,33 +347,33 @@ public class ConversationAgentService {
     }
 
     /** SINGLE_TOOL：走 ReAct Agent 的 streamEvents。 */
-    private Flux<String> streamReAct(String agentId, String conversationId, String userMessage) {
+    private Flux<String> streamReAct(String agentId, String conversationId, String userMessage, TurnTokens holder) {
         return streamAgentEvents(recruitmentAgentService.getHarnessAgent(),
-                agentId, conversationId, userMessage, "RecruitmentAgent");
+                agentId, conversationId, userMessage, "RecruitmentAgent", holder);
     }
 
     /** COMPOSITE：走 Supervisor Agent 的 streamEvents。 */
-    private Flux<String> streamSupervisor(String agentId, String conversationId, String userMessage) {
+    private Flux<String> streamSupervisor(String agentId, String conversationId, String userMessage, TurnTokens holder) {
         return streamAgentEvents(supervisorAgentService.getSupervisorAgent(),
-                agentId, conversationId, userMessage, "SupervisorAgent");
+                agentId, conversationId, userMessage, "SupervisorAgent", holder);
     }
 
     /**
      * 通用 Agent 事件流处理 (文档 §4.1 streamAgentEvents)。
      * 调 agent.streamEvents() 获取 AgentEvent 流，通过 sseMapper.toSse() 转为 SSE 字符串。
-     * 跟踪 thinking 时间、工具调用次数、token 统计。
+     * 跟踪 thinking 时间、工具调用次数、token 统计 (从 ModelCallEndEvent 的 ChatUsage 真实累计)。
      */
     private Flux<String> streamAgentEvents(HarnessAgent agent, String agentId,
                                               String conversationId, String userMessage,
-                                              String agentName) {
+                                              String agentName, TurnTokens holder) {
         AtomicInteger toolCalls = new AtomicInteger(0);
         AtomicLong thinkingMs = new AtomicLong(0);
         long start = System.currentTimeMillis();
 
         return agent.streamEvents(new UserMessage(userMessage))
                 .<String>handle((event, sink) -> {
-                    // 跟踪统计
-                    trackStats(event, toolCalls, thinkingMs);
+                    // 跟踪统计 (含 token 累计)
+                    trackStats(event, toolCalls, thinkingMs, holder);
                     // sseMapper.toSse 对未处理事件返回 null (文档: 静默跳过), handle 跳过 null
                     String sse = sseMapper.toSse(event);
                     if (sse != null) {
@@ -270,7 +382,10 @@ public class ConversationAgentService {
                 })
                 .concatWith(Flux.defer(() -> Flux.just(
                         sseFormat("stats", Map.of(
-                                "tokens", 0,
+                                "totalTokens", holder.total(),
+                                "inputTokens", holder.input,
+                                "outputTokens", holder.output,
+                                "estimated", holder.estimated,
                                 "latency", System.currentTimeMillis() - start,
                                 "toolCalls", toolCalls.get(),
                                 "thinkingMs", thinkingMs.get())),
@@ -278,15 +393,20 @@ public class ConversationAgentService {
                 .doOnComplete(() -> {
                     long latency = System.currentTimeMillis() - start;
                     if (langFuseTraceService.isEnabled()) {
-                        langFuseTraceService.trace(agentName, userMessage, "", 0, latency);
+                        langFuseTraceService.trace(agentName, userMessage, "", holder.total(), latency);
                     }
                     agentTraceService.record(conversationId, agentName, "turn",
-                            null, userMessage, "", "deepseek-v4-flash", 0, latency, "success");
+                            null, userMessage, "", "deepseek-v4-flash", holder.total(), latency, "success");
                 });
     }
 
-    private void trackStats(AgentEvent event, AtomicInteger toolCalls, AtomicLong thinkingMs) {
+    private void trackStats(AgentEvent event, AtomicInteger toolCalls, AtomicLong thinkingMs, TurnTokens holder) {
         try {
+            // 真实 token: 从 ModelCallEndEvent 的 ChatUsage 累计 (每次模型调用一次)
+            if (event instanceof ModelCallEndEvent e) {
+                holder.add(e.getUsage());
+                return;
+            }
             switch (event.getType()) {
                 case TOOL_CALL_START -> toolCalls.incrementAndGet();
                 default -> { }
@@ -346,7 +466,7 @@ public class ConversationAgentService {
         final String cId = conversationId == null ? replyId : conversationId;
         final String msg = userMessage == null ? "" : userMessage;
         try {
-            streamReAct(aId, cId, msg).subscribe(
+            streamReAct(aId, cId, msg, new TurnTokens()).subscribe(
                     sse -> { },
                     e -> log.warn("HITL 恢复执行失败: {}", e.getMessage())
             );
@@ -385,9 +505,10 @@ public class ConversationAgentService {
     // ─────────────────── finalizeTurn (文档 §4.1 doOnComplete 后处理) ───────────────────
 
     private void finalizeTurn(String agentId, String conversationId, String userMessage,
-                               String assistantReply, long turnStartMs) {
+                               String assistantReply, long turnStartMs, Long sessionId, TurnTokens holder) {
         long latency = System.currentTimeMillis() - turnStartMs;
-        log.info("finalizeTurn: agentId={}, assistantReply.length={}, latency={}ms", agentId, assistantReply.length(), latency);
+        log.info("finalizeTurn: agentId={}, assistantReply.length={}, latency={}ms, tokens={}/{}",
+                agentId, assistantReply.length(), latency, holder.input, holder.output);
         try {
             // 1. assistant 回复追加到 Redis
             redisSessionMemory.addMessage(agentId, "assistant", assistantReply);
@@ -400,6 +521,13 @@ public class ConversationAgentService {
 
             // 4. 清理 HybridMemoryRetriever 线程缓存
             HybridMemoryRetriever.clearCache();
+
+            // 5. 落库: 持久化 user/assistant 消息及其 token 消耗 (供会话/全局 token 统计)
+            if (sessionId != null) {
+                chatSessionService.saveMessage(sessionId, "user", userMessage, holder.input);
+                chatSessionService.saveMessage(sessionId, "assistant", assistantReply, holder.output);
+                chatSessionService.touch(sessionId);
+            }
 
             log.info("Turn finalized: agentId={}, latency={}ms", agentId, latency);
         } catch (Exception e) {

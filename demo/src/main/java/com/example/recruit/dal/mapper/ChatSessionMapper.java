@@ -33,4 +33,20 @@ public interface ChatSessionMapper extends BaseMapper<ChatSession> {
      */
     @Select("SELECT * FROM chat_session WHERE agent_id = #{agentId} ORDER BY updated_at DESC")
     List<ChatSession> selectByAgentId(@Param("agentId") String agentId);
+
+    /**
+     * 列出用户会话并聚合每个会话的累计 token 数 (token_count)。
+     * map-underscore-to-camel-case 将 token_count 映射到 ChatSession.tokenCount。
+     */
+    @Select("SELECT s.*, " +
+            "COALESCE((SELECT SUM(m.tokens) FROM chat_message m WHERE m.session_id = s.id), 0) AS token_count " +
+            "FROM chat_session s WHERE s.user_id = #{userId} ORDER BY s.updated_at DESC")
+    List<ChatSession> listWithTokens(@Param("userId") Long userId);
+
+    /**
+     * 刷新会话 updated_at (让最近活跃会话上浮排序)。
+     */
+    @org.apache.ibatis.annotations.Update(
+            "UPDATE chat_session SET updated_at = now() WHERE id = #{id}")
+    int touch(@Param("id") Long id);
 }

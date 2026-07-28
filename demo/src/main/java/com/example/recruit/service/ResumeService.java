@@ -135,6 +135,34 @@ public class ResumeService {
         }
     }
 
+    /** 多条件搜索/筛选简历。 */
+    public List<Resume> search(String keyword, String status, String intendedPosition, String education) {
+        try {
+            return resumeMapper.search(keyword, status, intendedPosition, education);
+        } catch (Exception e) {
+            log.warn("search resume failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 获取所有意向岗位列表。 */
+    public List<String> listIntendedPositions() {
+        try {
+            return resumeMapper.listIntendedPositions();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    /** 获取所有学历列表。 */
+    public List<String> listEducations() {
+        try {
+            return resumeMapper.listEducations();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
     /**
      * 多参数可选通用搜索 (复刻自文档 §8.2 ResumeSearchTool)。
      * 所有参数可选，按需组合 WHERE；parsed_json 为 JSONB，like 在 PostgreSQL 下生效。
