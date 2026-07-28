@@ -16,6 +16,7 @@ import com.example.recruit.memory.HybridMemoryRetriever;
 import com.example.recruit.memory.RedisSessionMemory;
 import com.example.recruit.service.AgentTraceService;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.example.recruit.llm.JsonGuard;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
@@ -120,7 +121,7 @@ public class ConversationAgentService {
         String sessionKey = "agent:session:" + agentId;
 
         // 1. 用户消息追加到 Redis 短期记忆
-        redisSessionMemory.appendMessage(agentId, "user", userMessage);
+        redisSessionMemory.addMessage(agentId, "user", userMessage);
 
         // 2. 意图分类
         Intent intent = intentRouter.classify(userMessage);
@@ -147,13 +148,21 @@ public class ConversationAgentService {
         StringBuilder assistantReply = new StringBuilder();
         return body
                 .doOnNext(sse -> {
-                    // 粗略提取 assistant 文本用于后处理 (统计/记忆)
+                    // 用 JSON 解析提取 delta (替代脆弱的 indexOf, 避免转义/特殊字符截错)
                     if (sse != null && sse.startsWith("event: text")) {
-                        int dataIdx = sse.indexOf("\"delta\":\"");
-                        if (dataIdx > 0) {
-                            String delta = sse.substring(dataIdx + 9, sse.indexOf("\"", dataIdx + 9));
-                            assistantReply.append(delta);
-                        }
+                        try {
+                            int dataStart = sse.indexOf("data: ");
+                            if (dataStart >= 0) {
+                                String jsonStr = sse.substring(dataStart + 6).trim();
+                                JsonNode node = JsonGuard.parseJsonSafe(jsonStr);
+                                if (node != null) {
+                                    String delta = node.path("delta").asText("");
+                                    if (!delta.isEmpty()) {
+                                        assistantReply.append(delta);
+                                    }
+                                }
+                            }
+                        } catch (Exception ignored) { }
                     }
                 })
                 .doOnComplete(() -> finalizeTurn(agentId, conversationId, userMessage,
@@ -169,12 +178,13 @@ public class ConversationAgentService {
 
     /** CHITCHAT：不走 Agent 框架，直接调 chatStream，取最近 3 条历史，1 次 LLM 调用。 */
     private Flux<String> streamChichat(String agentId, String conversationId, String userMessage) {
-        List<Map<String, Object>> history = redisSessionMemory.getHistory(agentId);
+        List<String> history = redisSessionMemory.getRecent(agentId, 3);
         StringBuilder ctx = new StringBuilder();
-        int from = Math.max(0, history.size() - 3);
-        for (int i = from; i < history.size(); i++) {
-            Map<String, Object> m = history.get(i);
-            ctx.append(m.get("role")).append(": ").append(m.get("content")).append('\n');
+        for (String entry : history) {
+            String[] parts = entry.split("\\|", 3);
+            String role = parts.length > 1 ? parts[1] : "";
+            String content = parts.length > 2 ? parts[2] : "";
+            ctx.append(role).append(": ").append(content).append('\n');
         }
         String sys = "你是 AI 招聘助手，可以帮 HR 完成招聘全流程。简洁友好地回答闲聊。\n历史:\n" + ctx;
         return deepSeekModelService.chatStream(sys, userMessage)
@@ -377,9 +387,10 @@ public class ConversationAgentService {
     private void finalizeTurn(String agentId, String conversationId, String userMessage,
                                String assistantReply, long turnStartMs) {
         long latency = System.currentTimeMillis() - turnStartMs;
+        log.info("finalizeTurn: agentId={}, assistantReply.length={}, latency={}ms", agentId, assistantReply.length(), latency);
         try {
             // 1. assistant 回复追加到 Redis
-            redisSessionMemory.appendMessage(agentId, "assistant", assistantReply);
+            redisSessionMemory.addMessage(agentId, "assistant", assistantReply);
 
             // 2. AutoMemoryExtractor 提取记忆
             autoMemoryExtractor.extract(agentId, userMessage, assistantReply);

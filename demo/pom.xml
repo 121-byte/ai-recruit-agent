@@ -115,14 +115,12 @@
             <artifactId>sa-token-spring-boot3-starter</artifactId>
             <version>${sa-token.version}</version>
         </dependency>
-        <!-- Sa-Token 整合 Redis (jackson 序列化) —— 暂时禁用: Redis 启用了 requirepass
-             但尚未配置密码, 先回退到 Sa-Token 内置内存会话存储跑通 6.3; 补密码后放开
+        <!-- Sa-Token 整合 Redis (jackson 序列化) -->
         <dependency>
             <groupId>cn.dev33</groupId>
             <artifactId>sa-token-redis-jackson</artifactId>
             <version>${sa-token.version}</version>
         </dependency>
-        -->
 
         <!-- 密码加密: BCrypt (不引入完整 Spring Security) -->
         <dependency>

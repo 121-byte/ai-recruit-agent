@@ -29,8 +29,17 @@ public class FloatVectorTypeHandler extends BaseTypeHandler<float[]> {
     public void setNonNullParameter(PreparedStatement ps, int i, float[] parameter, JdbcType jdbcType)
             throws SQLException {
         String vectorLiteral = toPgVectorLiteral(parameter);
-        // 使用 PGobject 风格的字符串绑定；非 PG 驱动也能以字符串接收
-        ps.setObject(i, vectorLiteral);
+        try {
+            // 用 PGobject(type="vector") 让 PG JDBC 以 vector 类型发送,
+            // 避免 INSERT 时 "column is vector but expression is text" 类型不匹配
+            org.postgresql.util.PGobject pgObj = new org.postgresql.util.PGobject();
+            pgObj.setType("vector");
+            pgObj.setValue(vectorLiteral);
+            ps.setObject(i, pgObj);
+        } catch (NoClassDefFoundError | Exception e) {
+            // 非 PG 驱动 (H2 等) 降级为字符串绑定
+            ps.setObject(i, vectorLiteral);
+        }
     }
 
     @Override

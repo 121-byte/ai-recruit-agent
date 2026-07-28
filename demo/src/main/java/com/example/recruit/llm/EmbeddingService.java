@@ -81,13 +81,16 @@ public class EmbeddingService {
             }
             return result;
         } catch (Exception e) {
-            log.error("Embedding failed, fallback to mock: {}", e.getMessage());
-            return mockEmbed(text);
+            // 复刻对齐参考: 真实 key 但 API 失败时抛异常 (非静默 fallback mock)
+            // 仅 useMock()/无 key 时走 mockEmbed
+            log.error("Embedding API failed (not mock mode): {}", e.getMessage());
+            throw new RuntimeException("Embedding API failed: " + e.getMessage(), e);
         }
     }
 
-    // ─────────────────── Mock ───────────────────
+    // ─────────────────── Mock (非参考行为: 演示降级) ───────────────────
 
+    /** 仅在 useMock()/无 key 时走 mock；真实 key 但 API 失败时抛异常 (对齐参考)。 */
     private boolean useMock() {
         return props.useMock() || !props.embeddingKeyPresent();
     }

@@ -1,21 +1,15 @@
 package com.example.recruit.memory;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.example.recruit.config.AppProperties;
-import com.example.recruit.dal.entity.ConsolidationTask;
 import com.example.recruit.dal.entity.MemoryEntry;
-import com.example.recruit.dal.entity.MemoryGraph;
-import com.example.recruit.dal.mapper.ConsolidationTaskMapper;
 import com.example.recruit.dal.mapper.MemoryEntryMapper;
-import com.example.recruit.dal.mapper.MemoryGraphMapper;
 import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.EmbeddingService;
 import com.example.recruit.llm.JsonGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,22 +19,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * LLM 驱动的 7 步记忆巩固 (复刻自文档 §5.5，190 行)。
+ * LLM 驱动的 7 步记忆巩固 (复刻对齐参考 §一-8)。
  *
- * <p>步骤：
- * <ol>
- *   <li>分类 → category (preference/fact/note)</li>
- *   <li>冲突解决 → 同 key 不同 value，保留最新或合并</li>
- *   <li>标签提取 → tags JSON 数组</li>
- *   <li>图谱边 → source_key → target_key, relation_type</li>
- *   <li>合并重复 → 语义相似度 > 0.95 的合并</li>
- *   <li>重要性评分 → 0.0-1.0 (HR 显式偏好 = 0.8+, 自动提取 = 0.5)</li>
- *   <li>摘要 → 压缩描述</li>
- * </ol>
- *
- * <p>{@link #consolidate} 为 {@link Transactional}：解析 LLM 输出 JSON 后，
- * 更新 memory_entry (category/importance/memory_value=summary/embedding)，
- * 插入 memory_graph 边，最后更新 consolidation_task 状态为 completed。
+ * <p>复刻对齐要点：
+ * <ul>
+ *   <li>用 {@code chatFast} + {@code JsonGuard.extractJson} (非 chatJson)</li>
+ *   <li>tags 仅 {@code log.debug}，不写库 (不更新 memory_entry.tags)</li>
+ *   <li>图谱边用 JdbcTemplate {@code INSERT … ON CONFLICT DO NOTHING} (替代 selectCount+insert)</li>
+ *   <li>consolidation_task 状态更新用 JdbcTemplate + completed_at</li>
+ * </ul>
  */
 @Component
 public class MemoryConsolidationAgent {
@@ -61,25 +48,16 @@ public class MemoryConsolidationAgent {
             "\"edges\":[{\"source_key\":\"\",\"target_key\":\"\",\"relation_type\":\"\",\"weight\":0.8}]}";
 
     private final MemoryEntryMapper memoryEntryMapper;
-    private final MemoryGraphMapper memoryGraphMapper;
     private final DeepSeekModelService deepSeek;
-    private final EmbeddingService embeddingService;
-    private final ConsolidationTaskMapper consolidationTaskMapper;
-    private final AppProperties appProperties;
+    private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public MemoryConsolidationAgent(MemoryEntryMapper memoryEntryMapper,
-                                    MemoryGraphMapper memoryGraphMapper,
                                     DeepSeekModelService deepSeek,
-                                    EmbeddingService embeddingService,
-                                    ConsolidationTaskMapper consolidationTaskMapper,
-                                    AppProperties appProperties) {
+                                    JdbcTemplate jdbcTemplate) {
         this.memoryEntryMapper = memoryEntryMapper;
-        this.memoryGraphMapper = memoryGraphMapper;
         this.deepSeek = deepSeek;
-        this.embeddingService = embeddingService;
-        this.consolidationTaskMapper = consolidationTaskMapper;
-        this.appProperties = appProperties;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -108,19 +86,25 @@ public class MemoryConsolidationAgent {
                     .append('\n');
         }
 
-        // Step 2: 调 LLM 执行 7 步巩固
-        String json;
+        // Step 2: 调 LLM (chatFast + extractJson, 非 chatJson)
+        String response;
         try {
-            json = deepSeek.chatJson(SYSTEM_PROMPT, userPrompt.toString());
+            response = deepSeek.chatFast(SYSTEM_PROMPT, userPrompt.toString());
         } catch (Exception e) {
-            log.warn("consolidate chatJson failed: {}", e.getMessage());
-            markTaskFailed(taskId, "chatJson failed: " + e.getMessage());
+            log.warn("consolidate chatFast failed: {}", e.getMessage());
+            markTaskFailed(taskId, "chatFast failed: " + e.getMessage());
             return;
         }
 
-        JsonNode root = JsonGuard.parseJsonSafe(json);
+        String jsonStr = JsonGuard.extractJson(response);
+        if (jsonStr == null || jsonStr.isBlank()) {
+            log.warn("consolidate: no JSON found in response: {}", response);
+            markTaskFailed(taskId, "no JSON in response");
+            return;
+        }
+        JsonNode root = JsonGuard.parseJsonSafe(jsonStr);
         if (root == null) {
-            log.warn("consolidate: invalid JSON: {}", json);
+            log.warn("consolidate: invalid JSON: {}", jsonStr);
             markTaskFailed(taskId, "invalid JSON");
             return;
         }
@@ -131,7 +115,10 @@ public class MemoryConsolidationAgent {
             keyToEntry.put(e.getMemoryKey(), e);
         }
 
-        // Step 4: 遍历 LLM 输出的 entries，更新 memory_entry
+        int entriesProcessed = 0;
+        int edgesCreated = 0;
+
+        // Step 3: 遍历 LLM 输出的 entries，更新 memory_entry
         JsonNode outEntries = root.path("entries");
         if (outEntries.isArray()) {
             for (JsonNode oe : outEntries) {
@@ -151,35 +138,36 @@ public class MemoryConsolidationAgent {
                     JsonNode impNode = oe.path("importance");
                     if (impNode.isNumber()) {
                         target.setImportance(impNode.asDouble());
+                    } else {
+                        // 对齐参考: importance 默认值
+                        target.setImportance(target.getImportance() != null ? target.getImportance() : 0.5);
                     }
+                    // tags 仅 log.debug，不写库 (不更新 memory_entry.tags)
                     JsonNode tagsNode = oe.path("tags");
                     if (tagsNode.isArray()) {
-                        String[] tags = new String[tagsNode.size()];
+                        StringBuilder tagStr = new StringBuilder();
                         for (int i = 0; i < tagsNode.size(); i++) {
-                            tags[i] = tagsNode.get(i).asText("");
+                            if (i > 0) tagStr.append(",");
+                            tagStr.append(tagsNode.get(i).asText(""));
                         }
-                        target.setTags(tags);
+                        log.debug("consolidate tags (not persisted): key={} tags={}", key, tagStr);
                     }
                     String summary = JsonGuard.text(oe, "summary");
                     String value = JsonGuard.text(oe, "value");
                     String newVal = (summary != null && !summary.isBlank()) ? summary : value;
                     if (newVal != null && !newVal.isBlank()) {
                         target.setMemoryValue(newVal);
-                        try {
-                            target.setEmbedding(embeddingService.embed(newVal));
-                        } catch (Exception embEx) {
-                            log.debug("re-embed during consolidate failed: {}", embEx.getMessage());
-                        }
                     }
                     target.setUpdatedAt(LocalDateTime.now());
                     memoryEntryMapper.updateById(target);
+                    entriesProcessed++;
                 } catch (Exception e) {
                     log.warn("update consolidated entry failed (key={}): {}", key, e.getMessage());
                 }
             }
         }
 
-        // Step 5: 遍历 edges，插入 memory_graph
+        // Step 4: 遍历 edges，用 JdbcTemplate INSERT ON CONFLICT DO NOTHING
         JsonNode outEdges = root.path("edges");
         if (outEdges.isArray()) {
             for (JsonNode edge : outEdges) {
@@ -203,68 +191,54 @@ public class MemoryConsolidationAgent {
                     if (wNode.isNumber()) {
                         weight = wNode.asDouble();
                     }
-                    MemoryGraph graph = new MemoryGraph();
-                    graph.setSourceEntryId(src.getId());
-                    graph.setTargetEntryId(tgt.getId());
-                    graph.setAgentId(agentId);
-                    graph.setRelationType(relationType);
-                    graph.setWeight(weight);
-                    // 去重：同一 (source,target,relation) 不重复插入
-                    Long dup = memoryGraphMapper.selectCount(
-                            new LambdaQueryWrapper<MemoryGraph>()
-                                    .eq(MemoryGraph::getSourceEntryId, src.getId())
-                                    .eq(MemoryGraph::getTargetEntryId, tgt.getId())
-                                    .eq(MemoryGraph::getRelationType, relationType));
-                    if (dup == null || dup == 0) {
-                        memoryGraphMapper.insert(graph);
-                    }
+                    // JdbcTemplate INSERT ON CONFLICT DO NOTHING (替代 selectCount+insert)
+                    jdbcTemplate.update(
+                            "INSERT INTO memory_graph(source_entry_id, target_entry_id, agent_id, relation_type, weight) " +
+                            "VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                            src.getId(), tgt.getId(), agentId, relationType, weight);
+                    edgesCreated++;
                 } catch (Exception e) {
                     log.warn("insert graph edge failed ({}→{}): {}", srcKey, tgtKey, e.getMessage());
                 }
             }
         }
 
-        // Step 6: 更新 consolidation_task 状态
+        // Step 5: 更新 consolidation_task 状态 (JdbcTemplate + completed_at)
+        markTaskCompleted(taskId, entriesProcessed, edgesCreated);
+    }
+
+    /** 标记任务完成 (JdbcTemplate + completed_at)。 */
+    private void markTaskCompleted(Long taskId, int entriesProcessed, int edgesCreated) {
+        if (taskId == null) {
+            return;
+        }
         try {
-            if (taskId != null) {
-                ConsolidationTask task = consolidationTaskMapper.selectById(taskId);
-                if (task != null) {
-                    task.setStatus("completed");
-                    ObjectNode resultNode = mapper.createObjectNode();
-                    resultNode.put("entriesProcessed", outEntries.isArray() ? outEntries.size() : 0);
-                    resultNode.put("edgesCreated", outEdges.isArray() ? outEdges.size() : 0);
-                    task.setResult(resultNode);
-                    task.setUpdatedAt(LocalDateTime.now());
-                    consolidationTaskMapper.updateById(task);
-                }
-            }
+            ObjectNode resultNode = mapper.createObjectNode();
+            resultNode.put("entriesProcessed", entriesProcessed);
+            resultNode.put("edgesCreated", edgesCreated);
+            String resultJson = mapper.writeValueAsString(resultNode);
+            jdbcTemplate.update(
+                    "UPDATE consolidation_task SET status = 'completed', completed_at = NOW(), result = ?::jsonb WHERE id = ?",
+                    resultJson, taskId);
         } catch (Exception e) {
-            log.warn("update consolidation_task failed (taskId={}): {}", taskId, e.getMessage());
+            log.warn("mark task completed failed (taskId={}): {}", taskId, e.getMessage());
         }
     }
 
+    /** 标记任务失败 (JdbcTemplate + completed_at)。 */
     private void markTaskFailed(Long taskId, String reason) {
         if (taskId == null) {
             return;
         }
         try {
-            ConsolidationTask task = consolidationTaskMapper.selectById(taskId);
-            if (task != null) {
-                task.setStatus("failed");
-                ObjectNode resultNode = mapper.createObjectNode();
-                resultNode.put("error", reason);
-                task.setResult(resultNode);
-                task.setUpdatedAt(LocalDateTime.now());
-                consolidationTaskMapper.updateById(task);
-            }
+            ObjectNode resultNode = mapper.createObjectNode();
+            resultNode.put("error", reason);
+            String resultJson = mapper.writeValueAsString(resultNode);
+            jdbcTemplate.update(
+                    "UPDATE consolidation_task SET status = 'failed', completed_at = NOW(), result = ?::jsonb WHERE id = ?",
+                    resultJson, taskId);
         } catch (Exception e) {
             log.warn("mark task failed error: {}", e.getMessage());
         }
-    }
-
-    // 供上游 Mock 模式判断
-    @SuppressWarnings("unused")
-    private boolean useMock() {
-        return appProperties.useMock();
     }
 }

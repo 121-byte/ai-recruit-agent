@@ -86,4 +86,13 @@ public interface MemoryEntryMapper extends BaseMapper<MemoryEntry> {
     @Delete("DELETE FROM memory_entry WHERE agent_id = #{agentId} AND memory_key = #{memoryKey}")
     int deleteByAgentIdAndKey(@Param("agentId") String agentId,
                              @Param("memoryKey") String memoryKey);
+
+    /**
+     * 查询待巩固记忆: importance IS NULL OR importance=0.5, ORDER BY created_at ASC, LIMIT n。
+     */
+    @Select("SELECT * FROM memory_entry WHERE agent_id = #{agentId} " +
+            "AND (importance IS NULL OR importance = 0.5) " +
+            "ORDER BY created_at ASC LIMIT #{limit}")
+    List<MemoryEntry> findPendingEntries(@Param("agentId") String agentId,
+                                         @Param("limit") int limit);
 }

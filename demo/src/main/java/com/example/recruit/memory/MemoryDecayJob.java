@@ -1,53 +1,54 @@
 package com.example.recruit.memory;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.example.recruit.dal.entity.MemoryEntry;
 import com.example.recruit.dal.mapper.MemoryEntryMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * 遗忘机制一：每日衰减 (复刻自文档 §5.7，66 行)。
+ * 遗忘机制一：每日衰减 (复刻对齐参考 §一-9)。
  *
- * <p>定时任务：{@code @Scheduled(cron="0 30 3 * * *")} — 每天凌晨 3:30 执行。
- *
- * <p>对每个 agentId：
- * <ol>
- *   <li>applyDecay(0.95, now-30d)：importance &lt; 0.7 且 30 天前更新的记忆 importance *= 0.95
- *       (importance ≥ 0.7 的高价值记忆豁免)</li>
- *   <li>archiveLowImportance(0.05)：importance &lt; 0.05 的记忆 category = 'archived'</li>
- * </ol>
+ * <p>复刻对齐要点：
+ * <ul>
+ *   <li>SELECT DISTINCT agent_id FROM memory_entry WHERE agent_id LIKE 'hr:%' 用 JdbcTemplate</li>
+ *   <li>applyDecay 条件加 last_access + created_at:
+ *       importance&lt;0.7 AND (last_access IS NULL OR last_access&lt;cutoff)
+ *       AND created_at&lt;now-30d</li>
+ *   <li>cutoff 参数类型对齐 (String ISO_LOCAL_DATE)</li>
+ * </ul>
  */
 @Component
 public class MemoryDecayJob {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryDecayJob.class);
 
-    private static final double DAILY_DECAY_FACTOR = 0.95;   // 每日衰减因子
-    private static final double ARCHIVE_THRESHOLD = 0.05;     // 归档阈值
-    private static final int CUTOFF_DAYS = 30;                 // 30 天前的记忆才衰减
+    private static final double DAILY_DECAY_FACTOR = 0.95;
+    private static final double ARCHIVE_THRESHOLD = 0.05;
+    private static final int CUTOFF_DAYS = 30;
 
     private final MemoryEntryMapper memoryEntryMapper;
+    private final JdbcTemplate jdbcTemplate;
 
-    public MemoryDecayJob(MemoryEntryMapper memoryEntryMapper) {
+    public MemoryDecayJob(MemoryEntryMapper memoryEntryMapper, JdbcTemplate jdbcTemplate) {
         this.memoryEntryMapper = memoryEntryMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Scheduled(cron = "0 30 3 * * *")
     public void runDailyDecay() {
         log.info("daily decay job start");
         Set<String> agentIds = distinctAgentIds();
-        LocalDateTime cutoff = LocalDateTime.now().minusDays(CUTOFF_DAYS);
+        String cutoffDate = LocalDate.now().minusDays(CUTOFF_DAYS).toString();
         for (String agentId : agentIds) {
             try {
-                int decayed = memoryEntryMapper.applyDecay(agentId, DAILY_DECAY_FACTOR, cutoff);
+                int decayed = applyDecay(agentId, DAILY_DECAY_FACTOR, cutoffDate);
                 int archived = memoryEntryMapper.archiveLowImportance(agentId, ARCHIVE_THRESHOLD);
                 log.debug("daily decay agent={}: decayed={}, archived={}", agentId, decayed, archived);
             } catch (Exception e) {
@@ -57,19 +58,34 @@ public class MemoryDecayJob {
         log.info("daily decay job done, agents={}", agentIds.size());
     }
 
-    /** 查询所有 distinct agent_id (HR 隔离)。 */
+    /**
+     * applyDecay: importance<0.7 AND (last_access IS NULL OR last_access<cutoff)
+     * AND created_at<now-30d AND agent_id=? (对齐参考)。
+     * cutoff 为 ISO_LOCAL_DATE 字符串。
+     */
+    private int applyDecay(String agentId, double factor, String cutoffDate) {
+        try {
+            return jdbcTemplate.update(
+                    "UPDATE memory_entry SET importance = importance * ? " +
+                    "WHERE agent_id = ? AND importance < 0.7 " +
+                    "AND (last_access IS NULL OR last_access < ?::timestamp) " +
+                    "AND created_at < (NOW() - INTERVAL '30 days')",
+                    factor, agentId, cutoffDate);
+        } catch (Exception e) {
+            log.warn("applyDecay failed (agent={}): {}", agentId, e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * 查询所有 distinct agent_id (HR 隔离) — 用 JdbcTemplate (对齐参考)。
+     */
     private Set<String> distinctAgentIds() {
         try {
-            List<MemoryEntry> all = memoryEntryMapper.selectList(
-                    new LambdaQueryWrapper<MemoryEntry>()
-                            .select(MemoryEntry::getAgentId));
-            Set<String> ids = new HashSet<>();
-            for (MemoryEntry e : all) {
-                if (e.getAgentId() != null) {
-                    ids.add(e.getAgentId());
-                }
-            }
-            return ids;
+            List<String> ids = jdbcTemplate.queryForList(
+                    "SELECT DISTINCT agent_id FROM memory_entry WHERE agent_id LIKE 'hr:%'",
+                    String.class);
+            return new HashSet<>(ids);
         } catch (Exception e) {
             log.warn("distinctAgentIds failed: {}", e.getMessage());
             return new HashSet<>();

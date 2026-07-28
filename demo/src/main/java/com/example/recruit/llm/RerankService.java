@@ -36,6 +36,13 @@ public class RerankService {
     /** 百炼原生 rerank 端点 (相对 baseUrl)。 */
     private static final String RERANK_PATH = "/api/v1/services/rerank/text-rerank/text-rerank";
 
+    /** 招聘场景化 instruct (对齐参考)。 */
+    private static final String INSTRUCT =
+            "根据岗位需求，按技术技能匹配度和相关工作经验对候选人简历排序";
+
+    /** 文档截断长度 (对齐参考: 800 字)。 */
+    private static final int MAX_DOC_CHARS = 800;
+
     private final AppProperties props;
     private WebClient webClient;
 
@@ -60,6 +67,10 @@ public class RerankService {
         if (documents == null || documents.isEmpty()) {
             return List.of();
         }
+        // 对齐参考: documents.size()<=topN 直接原序返回不调 API
+        if (documents.size() <= topN) {
+            return IntStream.range(0, documents.size()).boxed().toList();
+        }
         if (useMock()) {
             return mockRerank(query, documents, topN);
         }
@@ -68,9 +79,13 @@ public class RerankService {
             requestBody.put("model", props.getRerank().getModel());
             ObjectNode input = requestBody.putObject("input");
             input.put("query", query == null ? "" : query);
+            // 对齐参考: 加 instruct 字段 (招聘场景化引导)
+            input.put("instruct", INSTRUCT);
             ArrayNode docs = input.putArray("documents");
             for (String d : documents) {
-                docs.add(d == null ? "" : d);
+                // 对齐参考: 文档截断 800 字
+                String truncated = (d == null) ? "" : (d.length() > MAX_DOC_CHARS ? d.substring(0, MAX_DOC_CHARS) : d);
+                docs.add(truncated);
             }
             requestBody.put("top_n", Math.min(topN, documents.size()));
             requestBody.put("return_documents", false);

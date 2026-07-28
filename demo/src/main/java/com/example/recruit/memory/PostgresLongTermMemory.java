@@ -9,19 +9,30 @@ import com.example.recruit.llm.EmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 长期记忆：封装 {@link MemoryEntryMapper} 的 CRUD + 向量/关键词检索
- * (复刻自文档 §5.2)。
+ * (复刻对齐参考 §一-2)。
  *
- * <p>save 利用 UNIQUE(agent_id, memory_key) 约束语义实现 upsert：
- * 先按 (agentId, memoryKey) 查询，存在则更新 value/category/embedding，否则插入新条目。
+ * <p>方法契约对齐参考：
+ * <ul>
+ *   <li>{@code store} — 直接 insert (不去重)</li>
+ *   <li>{@code upsert} — 先 findByAgentIdAndKey，存在 update 不存在 store</li>
+ *   <li>{@code get(agentId, key) → Optional<MemoryEntry>}</li>
+ *   <li>{@code delete(agentId, key)}</li>
+ *   <li>{@code search(agentId, query)} — 内部 searchByKeyword("%"+query+"%")</li>
+ * </ul>
  *
- * <p>所有数据库调用 try/catch，失败静默返回空，保证 Mock / H2 降级环境下不阻断调用方。
+ * <p>embedding 内容对齐参考：{@code embed(key + ": " + value)} 使记忆键参与向量化。
+ *
+ * <p>{@code save} 保留转发 upsert，兼容旧调用方。
+ * {@code searchByVector} 保留仅供测试 (主路径走 HybridMemoryRetriever 的 JdbcTemplate)。
  */
 @Component
 public class PostgresLongTermMemory {
@@ -40,46 +51,87 @@ public class PostgresLongTermMemory {
         this.appProperties = appProperties;
     }
 
+    // ─────────────────── 对齐参考: store / upsert / get / delete / search ───────────────────
+
     /**
-     * 插入或更新记忆。UNIQUE(agent_id, memory_key) 去重：
-     * 存在 → 更新 value/category/embedding；不存在 → 插入。
+     * 直接 insert 一条记忆 (不去重，对齐参考 store)。
+     */
+    @Transactional
+    public void store(String agentId, String key, String value, String category) {
+        float[] emb = embeddingService.embed(key + ": " + value);
+        LocalDateTime now = LocalDateTime.now();
+        MemoryEntry entry = new MemoryEntry();
+        entry.setAgentId(agentId);
+        entry.setMemoryKey(key);
+        entry.setMemoryValue(value);
+        entry.setCategory(category);
+        entry.setTags(new String[0]);
+        entry.setAccessCount(0);
+        entry.setLastAccess(now);
+        entry.setImportance(0.5);
+        entry.setEmbedding(emb);
+        entry.setCreatedAt(now);
+        entry.setUpdatedAt(now);
+        memoryEntryMapper.insert(entry);
+    }
+
+    /**
+     * 先 findByAgentIdAndKey，存在 update 不存在 store (对齐参考 upsert)。
+     */
+    @Transactional
+    public void upsert(String agentId, String key, String value, String category) {
+        MemoryEntry existing = findByAgentIdAndKey(agentId, key);
+        if (existing != null) {
+            float[] emb = embeddingService.embed(key + ": " + value);
+            existing.setMemoryValue(value);
+            existing.setCategory(category);
+            existing.setEmbedding(emb);
+            existing.setUpdatedAt(LocalDateTime.now());
+            memoryEntryMapper.updateById(existing);
+            return;
+        }
+        store(agentId, key, value, category);
+    }
+
+    /**
+     * 按 (agentId, key) 查询单条记忆，返回 Optional (对齐参考 get)。
+     */
+    public Optional<MemoryEntry> get(String agentId, String key) {
+        MemoryEntry entry = findByAgentIdAndKey(agentId, key);
+        return Optional.ofNullable(entry);
+    }
+
+    /**
+     * 按 (agentId, key) 删除记忆 (对齐参考 delete)。
+     */
+    @Transactional
+    public void delete(String agentId, String key) {
+        memoryEntryMapper.deleteByAgentIdAndKey(agentId, key);
+    }
+
+    /**
+     * 关键词检索 (对齐参考 search)：内部调 searchByKeyword("%"+query+"%")。
+     */
+    public List<MemoryEntry> search(String agentId, String query) {
+        return searchByKeyword(agentId, "%" + (query == null ? "" : query) + "%");
+    }
+
+    // ─────────────────── 兼容旧调用方 ───────────────────
+
+    /**
+     * 转发 upsert，兼容旧调用方 (M1 前代码用 save)。
      */
     public void save(String agentId, String key, String value, String category) {
         try {
-            float[] emb = embeddingService.embed(value);
-            LocalDateTime now = LocalDateTime.now();
-
-            MemoryEntry existing = memoryEntryMapper.selectOne(
-                    new LambdaQueryWrapper<MemoryEntry>()
-                            .eq(MemoryEntry::getAgentId, agentId)
-                            .eq(MemoryEntry::getMemoryKey, key));
-            if (existing != null) {
-                existing.setMemoryValue(value);
-                existing.setCategory(category);
-                existing.setEmbedding(emb);
-                existing.setUpdatedAt(now);
-                memoryEntryMapper.updateById(existing);
-                return;
-            }
-            MemoryEntry entry = new MemoryEntry();
-            entry.setAgentId(agentId);
-            entry.setMemoryKey(key);
-            entry.setMemoryValue(value);
-            entry.setCategory(category);
-            entry.setTags(new String[0]);
-            entry.setAccessCount(0);
-            entry.setLastAccess(now);
-            entry.setImportance(0.5);
-            entry.setEmbedding(emb);
-            entry.setCreatedAt(now);
-            entry.setUpdatedAt(now);
-            memoryEntryMapper.insert(entry);
+            upsert(agentId, key, value, category);
         } catch (Exception e) {
-            log.warn("save memory failed (agent={}, key={}): {}", agentId, key, e.getMessage());
+            log.warn("save(upsert) memory failed (agent={}, key={}): {}", agentId, key, e.getMessage());
         }
     }
 
-    /** pgvector 向量检索：cosine distance 排序 top-K。 */
+    // ─────────────────── 检索方法 ───────────────────
+
+    /** pgvector 向量检索：cosine distance 排序 top-K (仅供测试; 主路径走 HybridMemoryRetriever JdbcTemplate)。 */
     public List<MemoryEntry> searchByVector(String agentId, float[] queryVector, int topK) {
         try {
             return memoryEntryMapper.searchByVector(
@@ -159,6 +211,21 @@ public class PostgresLongTermMemory {
             }
         } catch (Exception e) {
             log.warn("updateImportance failed (id={}): {}", id, e.getMessage());
+        }
+    }
+
+    // ─────────────────── 内部工具 ───────────────────
+
+    /** 按 (agentId, key) 查询单条。 */
+    private MemoryEntry findByAgentIdAndKey(String agentId, String key) {
+        try {
+            return memoryEntryMapper.selectOne(
+                    new LambdaQueryWrapper<MemoryEntry>()
+                            .eq(MemoryEntry::getAgentId, agentId)
+                            .eq(MemoryEntry::getMemoryKey, key));
+        } catch (Exception e) {
+            log.debug("findByAgentIdAndKey failed (agent={}, key={}): {}", agentId, key, e.getMessage());
+            return null;
         }
     }
 

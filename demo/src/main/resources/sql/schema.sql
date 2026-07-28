@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS memory_entry (
     agent_id        VARCHAR(64),                     -- 格式 hr:{userId}
     memory_key      VARCHAR(255),
     memory_value    TEXT,
-    category        VARCHAR(50) DEFAULT 'note',      -- preference/fact/note/archived
+    category        VARCHAR(50) DEFAULT 'general',      -- preference/fact/note/archived (对齐参考: 默认 general)
     tags            TEXT[],
     access_count    INTEGER DEFAULT 0,
     last_access     TIMESTAMP,
@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS memory_graph (
     agent_id        VARCHAR(64),
     relation_type   VARCHAR(50) DEFAULT 'related_to',
     weight          DOUBLE PRECISION DEFAULT 1.0,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (source_entry_id, target_entry_id, relation_type)
 );
 CREATE INDEX IF NOT EXISTS idx_graph_source ON memory_graph (source_entry_id, agent_id);
@@ -104,9 +105,10 @@ CREATE TABLE IF NOT EXISTS document_chunk (
     parent_type     VARCHAR(20),                     -- resume/job
     parent_id       BIGINT,
     chunk_index     INT,
-    chunk_type      VARCHAR(50),                     -- skill/experience/education/summary
+    chunk_type      VARCHAR(50) NOT NULL,            -- skill/experience/education/summary/basic_info/work_exp/projects/full
     content         TEXT,
     embedding       VECTOR(1024),
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (parent_type, parent_id, chunk_index)
 );
 CREATE INDEX IF NOT EXISTS idx_chunk_parent   ON document_chunk (parent_type, parent_id);
@@ -221,7 +223,8 @@ CREATE TABLE IF NOT EXISTS consolidation_task (
     entry_ids       BIGINT[],
     result          JSONB,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at    TIMESTAMP                       -- 对齐参考: 巩固完成时间戳
 );
 
 -- ─────────────────── evaluation_golden_sample 评估金标样本 ───────────────────
@@ -265,3 +268,20 @@ CREATE TABLE IF NOT EXISTS chat_message (
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_chat_message_session ON chat_message (session_id);
+
+-- ════════════════════════════════════════════════════════════
+-- 幂等 ALTER: 对齐参考项目表结构 (memory-rag-alignment M4.1)
+-- 适配已存在的远程表 (CREATE TABLE IF NOT EXISTS 不会补充列/约束)
+-- ════════════════════════════════════════════════════════════
+
+-- memory_entry: category 默认值改 'general' (参考用 general, 当前 note)
+ALTER TABLE memory_entry ALTER COLUMN category SET DEFAULT 'general';
+
+-- memory_graph: 补 created_at (复合 PK 已支持 ON CONFLICT DO NOTHING 去重)
+ALTER TABLE memory_graph ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- document_chunk: 补 created_at (chunk_type NOT NULL 在 CREATE 中定义, 既有表如需可手动 ALTER)
+ALTER TABLE document_chunk ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- consolidation_task: 补 completed_at
+ALTER TABLE consolidation_task ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
