@@ -1,8 +1,8 @@
 package com.example.recruit.agent.tool;
 
-import com.example.recruit.domain.analysis.ComparisonResult;
-import com.example.recruit.domain.analysis.ResumeAnalysisResult;
-import com.example.recruit.service.ResumeAnalysisService;
+import com.example.recruit.module.resume.domain.ComparisonResult;
+import com.example.recruit.module.resume.domain.ResumeAnalysisResult;
+import com.example.recruit.module.resume.application.ResumeAnalysisService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import org.springframework.stereotype.Component;

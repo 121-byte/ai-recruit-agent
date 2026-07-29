@@ -15,7 +15,7 @@ import com.example.recruit.memory.AutoMemoryExtractor;
 import com.example.recruit.memory.ConsolidationScheduler;
 import com.example.recruit.memory.HybridMemoryRetriever;
 import com.example.recruit.memory.RedisSessionMemory;
-import com.example.recruit.service.AgentTraceService;
+import com.example.recruit.agent.trace.AgentTraceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.example.recruit.infra.llm.JsonGuard;
 import io.agentscope.core.agent.Agent;
@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -144,7 +145,9 @@ public class ConversationAgentService {
                     Map.of("sessionId", String.valueOf(sessionDbId)));
 
             // 3. 意图分类
-            Intent intent = intentRouter.classify(userMessage);
+            IntentRouter.IntentWithUsage routed = intentRouter.classifyWithUsage(userMessage);
+            holder.add(routed.inputTokens(), routed.outputTokens());
+            Intent intent = routed.intent();
             log.info("Intent: {} (conf={}) for: {}", intent.type(), intent.confidence(),
                     userMessage.length() > 50 ? userMessage.substring(0, 50) + "..." : userMessage);
 
@@ -159,6 +162,7 @@ public class ConversationAgentService {
             String convId = String.valueOf(sessionDbId);
             Flux<String> body = switch (intent.type()) {
                 case CHITCHAT -> streamChichat(agentId, convId, userMessage, holder);
+                case CLARIFY -> streamClarify(holder);
                 case BATCH_INDEPENDENT -> streamBatch(agentId, convId, userMessage, holder);
                 case HITL -> formatHitl(agentId, convId, userMessage, holder);
                 case SINGLE_TOOL -> streamReAct(agentId, convId, userMessage, holder);
@@ -167,10 +171,11 @@ public class ConversationAgentService {
 
             // 6. 收集 assistant 回复 + doOnComplete 异步后处理
             StringBuilder assistantReply = new StringBuilder();
+            StringBuilder assistantReasoning = new StringBuilder();
             Flux<String> pipeline = body
                     .doOnNext(sse -> {
                         // 用 JSON 解析提取 delta (替代脆弱的 indexOf, 避免转义/特殊字符截错)
-                        if (sse != null && sse.startsWith("event: text")) {
+                        if (sse != null && (sse.startsWith("event: text") || sse.startsWith("event: thinking"))) {
                             try {
                                 int dataStart = sse.indexOf("data: ");
                                 if (dataStart >= 0) {
@@ -179,7 +184,11 @@ public class ConversationAgentService {
                                     if (node != null) {
                                         String delta = node.path("delta").asText("");
                                         if (!delta.isEmpty()) {
-                                            assistantReply.append(delta);
+                                            if (sse.startsWith("event: thinking")) {
+                                                assistantReasoning.append(delta);
+                                            } else {
+                                                assistantReply.append(delta);
+                                            }
                                         }
                                     }
                                 }
@@ -187,7 +196,7 @@ public class ConversationAgentService {
                         }
                     })
                     .doOnComplete(() -> finalizeTurn(agentId, convId, userMessage,
-                            assistantReply.toString(), turnStartMs, sessionDbId, holder))
+                            assistantReply.toString(), assistantReasoning.toString(), turnStartMs, sessionDbId, holder))
                     .onErrorResume(e -> {
                         log.error("stream error", e);
                         return Flux.just(sseError("Agent 流式响应异常: " + e.getMessage()),
@@ -264,7 +273,21 @@ public class ConversationAgentService {
 
     // ─────────────────── 分流方法 (文档 §4.1) ───────────────────
 
-    /** CHITCHAT：不走 Agent 框架，直接调 chatStreamWithUsage，取最近 3 条历史，1 次 LLM 调用并采集真实 token。 */
+    /** CHITCHAT：不走 Agent 框架，直接调 chatStreamWithUsage，取最近 3 条历史，1 次 LLM 调用并采集真实 token。
+     *  思维链 (reasoning_content) 单独发 thinking 事件, 正文发 text 事件, 前端分别渲染到思考面板与正文气泡。 */
+    /** 路由不确定时不进入任何工具链，要求用户补充可执行对象或目标。 */
+    private Flux<String> streamClarify(TurnTokens holder) {
+        String text = "我还不能确定要执行哪类招聘操作。请补充具体目标，例如岗位/候选人编号，以及希望我执行分析、匹配、出题还是发送操作。";
+        return Flux.just(
+                sseFormat("text", Map.of("delta", text, "isLast", true)),
+                sseFormat("stats", Map.of(
+                        "totalTokens", holder.total(),
+                        "inputTokens", holder.input,
+                        "outputTokens", holder.output,
+                        "estimated", false)),
+                sseFormat("done", Map.of()));
+    }
+
     private Flux<String> streamChichat(String agentId, String conversationId, String userMessage, TurnTokens holder) {
         List<String> history = redisSessionMemory.getRecent(agentId, 3);
         StringBuilder ctx = new StringBuilder();
@@ -275,43 +298,53 @@ public class ConversationAgentService {
             ctx.append(role).append(": ").append(content).append('\n');
         }
         String sys = "你是 AI 招聘助手，可以帮 HR 完成招聘全流程。简洁友好地回答闲聊。\n历史:\n" + ctx;
-        return deepSeekModelService.chatStreamWithUsage(sys, userMessage)
-                .map(chunk -> {
-                    // 末块携带 usage (delta 为空), 累计到 holder
-                    if (chunk.inputTokens() > 0 || chunk.outputTokens() > 0) {
-                        holder.add(chunk.inputTokens(), chunk.outputTokens());
-                    }
-                    return chunk.delta();
-                })
-                .filter(delta -> !delta.isEmpty())
-                .map(delta -> sseFormat("text", Map.of("delta", delta, "isLast", false)))
-                .concatWith(Flux.defer(() -> Flux.just(
-                        sseFormat("text", Map.of("delta", "", "isLast", true)),
-                        sseFormat("stats", Map.of(
-                                "totalTokens", holder.total(),
-                                "inputTokens", holder.input,
-                                "outputTokens", holder.output,
-                                "estimated", holder.estimated)),
-                        sseFormat("done", Map.of()))));
+        // 先发 thinking 起始帧, 让前端展示"思考中"
+        String thinkStart = sseFormat("thinking", Map.of("active", true, "isLast", false));
+        return Flux.just(thinkStart).concatWith(
+                deepSeekModelService.chatStreamWithUsage(sys, userMessage)
+                        .map(chunk -> {
+                            // 末块携带 usage (delta/reasoning 均空), 累计到 holder
+                            if (chunk.inputTokens() > 0 || chunk.outputTokens() > 0) {
+                                holder.add(chunk.inputTokens(), chunk.outputTokens());
+                            }
+                            return chunk;
+                        })
+                        .flatMap(chunk -> {
+                            List<String> frames = new ArrayList<>();
+                            if (chunk.reasoning() != null && !chunk.reasoning().isEmpty()) {
+                                frames.add(sseFormat("thinking",
+                                        Map.of("delta", chunk.reasoning(), "isLast", false)));
+                            }
+                            if (chunk.delta() != null && !chunk.delta().isEmpty()) {
+                                // 正文开始 → 结束思考态
+                                frames.add(sseFormat("thinking", Map.of("active", false, "isLast", false)));
+                                frames.add(sseFormat("text", Map.of("delta", chunk.delta(), "isLast", false)));
+                            }
+                            return Flux.fromIterable(frames);
+                        })
+                        .concatWith(Flux.defer(() -> Flux.just(
+                                sseFormat("thinking", Map.of("delta", "", "active", false, "isLast", true)),
+                                sseFormat("text", Map.of("delta", "", "isLast", true)),
+                                sseFormat("stats", Map.of(
+                                        "totalTokens", holder.total(),
+                                        "inputTokens", holder.input,
+                                        "outputTokens", holder.output,
+                                        "estimated", holder.estimated)),
+                                sseFormat("done", Map.of())))));
     }
 
     /** BATCH_INDEPENDENT：调 ReWooExecutor.execute，结果包装为 SSE text 事件。token 字符估算并标记 estimated。 */
     private Flux<String> streamBatch(String agentId, String conversationId, String userMessage, TurnTokens holder) {
         return Flux.defer(() -> {
-            // 先发 plan 事件
+            ReWooExecutor.BatchExecution execution = reWooExecutor.executeWithUsage(userMessage);
             String plan;
             try {
-                plan = deepSeekModelService.mapper().writeValueAsString(
-                        reWooExecutor.planOnly(userMessage));
+                plan = deepSeekModelService.mapper().writeValueAsString(execution.tasks());
             } catch (Exception e) {
                 plan = "[]";
             }
-            String result = reWooExecutor.execute(userMessage);
-            // ReWooExecutor 不暴露 token usage → 用字符估算 (约 4 字符/token) 并标记 estimated
-            int estIn = Math.max(1, userMessage == null ? 0 : userMessage.length() / 4);
-            int estOut = Math.max(1, result == null ? 0 : result.length() / 4);
-            holder.add(estIn, estOut);
-            holder.estimated = true;
+            String result = execution.result();
+            holder.add(execution.inputTokens(), execution.outputTokens());
             return Flux.just(
                     sseFormat("plan", Map.of("plan", plan)),
                     sseFormat("text", Map.of("delta", result, "isLast", false)),
@@ -320,7 +353,7 @@ public class ConversationAgentService {
                             "totalTokens", holder.total(),
                             "inputTokens", holder.input,
                             "outputTokens", holder.output,
-                            "estimated", true)),
+                            "estimated", holder.estimated)),
                     sseFormat("done", Map.of()));
         });
     }
@@ -466,7 +499,14 @@ public class ConversationAgentService {
         final String cId = conversationId == null ? replyId : conversationId;
         final String msg = userMessage == null ? "" : userMessage;
         try {
-            streamReAct(aId, cId, msg, new TurnTokens()).subscribe(
+            TurnTokens resumeTokens = new TurnTokens();
+            streamReAct(aId, cId, msg, resumeTokens).doOnComplete(() -> {
+                try {
+                    chatSessionService.addTokensToLatestAssistant(Long.parseLong(cId), resumeTokens.output);
+                } catch (NumberFormatException ignored) {
+                    // 非数据库会话不需要持久化统计
+                }
+            }).subscribe(
                     sse -> { },
                     e -> log.warn("HITL 恢复执行失败: {}", e.getMessage())
             );
@@ -505,7 +545,7 @@ public class ConversationAgentService {
     // ─────────────────── finalizeTurn (文档 §4.1 doOnComplete 后处理) ───────────────────
 
     private void finalizeTurn(String agentId, String conversationId, String userMessage,
-                               String assistantReply, long turnStartMs, Long sessionId, TurnTokens holder) {
+                               String assistantReply, String assistantReasoning, long turnStartMs, Long sessionId, TurnTokens holder) {
         long latency = System.currentTimeMillis() - turnStartMs;
         log.info("finalizeTurn: agentId={}, assistantReply.length={}, latency={}ms, tokens={}/{}",
                 agentId, assistantReply.length(), latency, holder.input, holder.output);
@@ -524,8 +564,8 @@ public class ConversationAgentService {
 
             // 5. 落库: 持久化 user/assistant 消息及其 token 消耗 (供会话/全局 token 统计)
             if (sessionId != null) {
-                chatSessionService.saveMessage(sessionId, "user", userMessage, holder.input);
-                chatSessionService.saveMessage(sessionId, "assistant", assistantReply, holder.output);
+                chatSessionService.saveMessage(sessionId, "user", userMessage, null, holder.input);
+                chatSessionService.saveMessage(sessionId, "assistant", assistantReply, assistantReasoning, holder.output);
                 chatSessionService.touch(sessionId);
             }
 

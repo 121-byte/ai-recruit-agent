@@ -5,6 +5,8 @@ import {
   listSessions,
   createSession,
   deleteSession,
+  updateSessionTitle,
+  chatConfirm,
   listSessionMessages,
   getSessionTokens
 } from '@/api'
@@ -54,7 +56,9 @@ export function useAgentStream() {
     const msg = {
       role: 'assistant',
       content: '',
-      thinking: false,
+      reasoning: '', // DeepSeek 思维链 (reasoning_content) 逐 token 累积
+      thinking: false, // 是否仍在思考阶段
+      showReasoning: true, // 思考面板默认展开 (流式时实时可见)
       toolCalls: [],
       plan: null,
       trace: null,
@@ -64,7 +68,8 @@ export function useAgentStream() {
       timestamp: Date.now()
     }
     messages.value.push(msg)
-    return msg
+    // 从响应式数组取回代理对象；后续逐帧修改才能立即触发 Vue 渲染。
+    return messages.value[messages.value.length - 1]
   }
 
   // ===== 工具调用处理 =====
@@ -107,9 +112,17 @@ export function useAgentStream() {
         sessionId.value = data.sessionId
         if (data.conversationId) conversationId.value = data.conversationId
         break
-      case 'thinking':
-        assistantMsg.thinking = true
+      case 'thinking': {
+        // 思维链: 逐 token 累积到 reasoning, 思考态由 active/isLast 控制
+        const delta = data.delta ?? ''
+        if (delta) assistantMsg.reasoning = (assistantMsg.reasoning || '') + delta
+        if (data.active === false || data.isLast === true) {
+          assistantMsg.thinking = false
+        } else {
+          assistantMsg.thinking = true
+        }
         break
+      }
       case 'text': {
         const delta = data.delta ?? data.text ?? ''
         assistantMsg.content += delta
@@ -188,7 +201,7 @@ export function useAgentStream() {
 
   // 解析单帧 SSE：取 event: 与 data:
   function parseFrame(frame) {
-    const lines = frame.split('\n')
+    const lines = frame.split(/\r?\n/)
     let eventType = 'message'
     let dataStr = ''
     for (const line of lines) {
@@ -199,6 +212,27 @@ export function useAgentStream() {
       }
     }
     return { eventType, dataStr }
+  }
+
+  function consumeFrames(buffer, assistantMsg) {
+    const frames = buffer.split(/\r?\n\r?\n/)
+    const remainder = frames.pop()
+
+    for (const frame of frames) {
+      if (!frame.trim()) continue
+      const { eventType, dataStr } = parseFrame(frame)
+      if (!dataStr) continue
+      let data
+      try {
+        data = JSON.parse(dataStr)
+      } catch (e) {
+        // 非 JSON 数据，作为纯文本处理
+        data = { delta: dataStr }
+      }
+      handleEvent(eventType, data, assistantMsg)
+    }
+
+    return remainder
   }
 
   // ===== send(text) 方法（§12.3） =====
@@ -240,23 +274,19 @@ export function useAgentStream() {
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
+        // SSE 允许使用 LF 或 CRLF 分隔帧；代理通常会保留 CRLF。
+        buffer = consumeFrames(buffer, assistantMsg)
+      }
 
-        // 解析 SSE 帧（event: type\ndata: json\n\n）
-        const frames = buffer.split('\n\n')
-        buffer = frames.pop() // 最后一个可能不完整
-
-        for (const frame of frames) {
-          if (!frame.trim()) continue
-          const { eventType, dataStr } = parseFrame(frame)
-          if (!dataStr) continue
-          let data
+      buffer += decoder.decode()
+      if (buffer.trim()) {
+        const { eventType, dataStr } = parseFrame(buffer)
+        if (dataStr) {
           try {
-            data = JSON.parse(dataStr)
+            handleEvent(eventType, JSON.parse(dataStr), assistantMsg)
           } catch (e) {
-            // 非 JSON 数据，作为纯文本处理
-            data = { delta: dataStr }
+            handleEvent(eventType, { delta: dataStr }, assistantMsg)
           }
-          handleEvent(eventType, data, assistantMsg)
         }
       }
     } catch (err) {
@@ -285,11 +315,17 @@ export function useAgentStream() {
   }
 
   // HITL 确认/拒绝
-  function resolveHitl(payload, confirmed) {
+  async function resolveHitl(payload, confirmed) {
     pendingHitl.value = null
-    // 用户确认后继续对话
-    if (confirmed) {
-      send(`[HITL 已确认] ${JSON.stringify(payload || {})}`)
+    try {
+      const result = await chatConfirm({ replyId: payload?.replyId, action: confirmed ? 'approved' : 'rejected' })
+      if (!result?.confirmed && confirmed) {
+        message.error(result?.error || '确认失败')
+      }
+      return result
+    } catch (e) {
+      message.error('确认请求失败')
+      return null
     }
   }
 
@@ -334,15 +370,31 @@ export function useAgentStream() {
     try {
       const list = await listSessionMessages(sid)
       const arr = Array.isArray(list) ? list : list?.list || []
-      messages.value = arr.map((m) => ({
-        role: m.role,
-        content: m.content,
-        thinking: false,
-        toolCalls: [],
-        tokens: m.tokens != null ? { input: 0, output: m.tokens, total: m.tokens } : null,
-        showTokens: false,
-        timestamp: null
-      }))
+      let pendingInputTokens = 0
+      messages.value = arr.map((m) => {
+        const msg = {
+          role: m.role,
+          content: m.content,
+          reasoning: m.reasoning || '',
+          thinking: false,
+          showReasoning: false,
+          toolCalls: [],
+          tokens: null,
+          showTokens: false,
+          timestamp: null
+        }
+        if (m.role === 'user') {
+          pendingInputTokens = m.tokens ?? 0
+        } else if (m.role === 'assistant' && m.tokens != null) {
+          msg.tokens = {
+            input: pendingInputTokens,
+            output: m.tokens,
+            total: pendingInputTokens + m.tokens
+          }
+          pendingInputTokens = 0
+        }
+        return msg
+      })
     } catch (e) {
       messages.value = []
     }
@@ -366,13 +418,30 @@ export function useAgentStream() {
   async function removeSession(sid) {
     try {
       await deleteSession(sid)
-      sessions.value = sessions.value.filter((s) => s.sessionId !== sid)
-      if (sessionId.value === sid) {
+      const id = String(sid)
+      sessions.value = sessions.value.filter((s) => String(s.id ?? s.sessionId) !== id)
+      if (String(sessionId.value) === id) {
         sessionId.value = 'default'
-        messages.value = []
+        clearMessages()
       }
+      return true
     } catch (e) {
       message.error('删除会话失败')
+      return false
+    }
+  }
+
+  async function renameSession(sid, title) {
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) return false
+    try {
+      await updateSessionTitle(sid, trimmedTitle)
+      const session = sessions.value.find((s) => String(s.id ?? s.sessionId) === String(sid))
+      if (session) session.title = trimmedTitle
+      return true
+    } catch (e) {
+      message.error('会话重命名失败')
+      return false
     }
   }
 
@@ -410,6 +479,7 @@ export function useAgentStream() {
     newSession,
     selectSession,
     removeSession,
+    renameSession,
     clearMessages,
     refreshSessionTokens,
     loadSessionMessages,

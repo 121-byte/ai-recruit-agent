@@ -1,8 +1,8 @@
 package com.example.recruit.agent.tool;
 
 import com.example.recruit.dal.entity.JobProfile;
-import com.example.recruit.service.JobAnalysisService;
-import com.example.recruit.service.JobProfileService;
+import com.example.recruit.module.job.application.JobAnalysisService;
+import com.example.recruit.module.job.application.JobProfileService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import org.slf4j.Logger;

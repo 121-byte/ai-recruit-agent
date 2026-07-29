@@ -24,6 +24,8 @@ public class ChatMessage {
 
     private String content;
 
+    private String reasoning;
+
     private Integer tokens;
 
     private LocalDateTime createdAt;

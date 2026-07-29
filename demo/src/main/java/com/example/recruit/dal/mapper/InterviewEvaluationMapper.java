@@ -7,21 +7,13 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
-/**
- * 面试评估表 Mapper。含按面试 ID 查询与删除。
- */
+/** Interview evaluation persistence mapper. */
 @Mapper
 public interface InterviewEvaluationMapper extends BaseMapper<InterviewEvaluation> {
 
-    /**
-     * 按面试 ID 查询评估记录。
-     */
-    @Select("SELECT * FROM interview_evaluation WHERE interview_id = #{interviewId} ORDER BY created_at DESC")
+    @Select("SELECT * FROM interview_evaluation WHERE interview_id = #{interviewId}")
     InterviewEvaluation selectByInterviewId(@Param("interviewId") Long interviewId);
 
-    /**
-     * 按面试 ID 删除评估记录。
-     */
     @Delete("DELETE FROM interview_evaluation WHERE interview_id = #{interviewId}")
     int deleteByInterviewId(@Param("interviewId") Long interviewId);
 }

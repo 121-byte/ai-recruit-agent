@@ -5,55 +5,55 @@ const routes = [
   {
     path: '/login',
     name: 'Login',
-    component: () => import('@/views/LoginView.vue'),
+    component: () => import('@/features/identity/views/LoginView.vue'),
     meta: { requiresAuth: false, title: '登录' }
   },
   {
     path: '/',
     name: 'Dashboard',
-    component: () => import('@/views/DashboardView.vue'),
+    component: () => import('@/features/dashboard/views/DashboardView.vue'),
     meta: { requiresAuth: true, title: '仪表盘' }
   },
   {
     path: '/chat',
     name: 'AgentChat',
-    component: () => import('@/views/AgentChatView.vue'),
+    component: () => import('@/features/agent/views/AgentChatView.vue'),
     meta: { requiresAuth: true, title: 'Agent 对话' }
   },
   {
     path: '/jobs',
     name: 'Jobs',
-    component: () => import('@/views/JobsView.vue'),
+    component: () => import('@/features/job/views/JobsView.vue'),
     meta: { requiresAuth: true, title: '岗位管理' }
   },
   {
     path: '/resumes',
     name: 'Resumes',
-    component: () => import('@/views/ResumesView.vue'),
+    component: () => import('@/features/resume/views/ResumesView.vue'),
     meta: { requiresAuth: true, title: '简历管理' }
   },
   {
     path: '/matches',
     name: 'Matches',
-    component: () => import('@/views/MatchesView.vue'),
+    component: () => import('@/features/match/views/MatchesView.vue'),
     meta: { requiresAuth: true, roles: ['HR'], title: '候选人匹配' }
   },
   {
     path: '/interviews',
     name: 'Interviews',
-    component: () => import('@/views/InterviewsView.vue'),
+    component: () => import('@/features/interview/views/InterviewsView.vue'),
     meta: { requiresAuth: true, roles: ['HR'], title: '面试管理' }
   },
   {
     path: '/interview-agent',
     name: 'InterviewAgent',
-    component: () => import('@/views/InterviewAgentView.vue'),
+    component: () => import('@/features/interview/views/InterviewAgentView.vue'),
     meta: { requiresAuth: true, roles: ['HR'], title: 'AI 面试官' }
   },
   {
     path: '/users',
     name: 'Users',
-    component: () => import('@/views/UsersView.vue'),
+    component: () => import('@/features/identity/views/UsersView.vue'),
     meta: { requiresAuth: true, roles: ['OPS'], title: '用户管理' }
   },
   {

@@ -280,10 +280,12 @@ CREATE TABLE IF NOT EXISTS chat_message (
     session_id      BIGINT REFERENCES chat_session (id) ON DELETE CASCADE,
     role            VARCHAR(20),                     -- user/assistant/system
     content         TEXT,
+    reasoning       TEXT,
     tokens          INT,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_chat_message_session ON chat_message (session_id);
+ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS reasoning TEXT;
 
 -- ════════════════════════════════════════════════════════════
 -- 幂等 ALTER: 对齐参考项目表结构 (memory-rag-alignment M4.1)

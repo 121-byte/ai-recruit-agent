@@ -42,9 +42,7 @@ class IntentRouterTest {
 
     @BeforeEach
     void setUp() {
-        // 真实 DynamicAnchorPool: 字段内联初始化 ConcurrentHashMap, 无需 @PostConstruct
-        DynamicAnchorPool pool = new DynamicAnchorPool();
-        router = new IntentRouter(embeddingService, pool, deepSeekModelService);
+        router = new IntentRouter(embeddingService, deepSeekModelService);
 
         // 确定性归一化向量: 相同文本 → 相同向量 → 余弦 1.0
         when(embeddingService.embed(anyString())).thenAnswer(inv -> {

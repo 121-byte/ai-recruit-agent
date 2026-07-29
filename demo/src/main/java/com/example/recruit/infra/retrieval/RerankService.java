@@ -104,8 +104,8 @@ public class RerankService {
             results.forEach(r -> indices.add(r.path("index").asInt()));
             return indices.size() > topN ? indices.subList(0, topN) : indices;
         } catch (Exception e) {
-            log.warn("Rerank failed, fallback to original order: {}", e.getMessage());
-            return IntStream.range(0, documents.size()).boxed().toList();
+            log.warn("Rerank failed: {}", e.getMessage());
+            throw new IllegalStateException("重排序服务调用失败，请稍后重试", e);
         }
     }
 

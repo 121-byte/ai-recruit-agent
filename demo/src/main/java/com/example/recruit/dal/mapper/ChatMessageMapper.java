@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 /**
  * 聊天消息表 Mapper。含 token 求和聚合方法。
@@ -52,4 +53,10 @@ public interface ChatMessageMapper extends BaseMapper<ChatMessage> {
      */
     @Delete("DELETE FROM chat_message WHERE session_id = #{sessionId}")
     int deleteBySessionId(@Param("sessionId") Long sessionId);
+
+    /** 将 HITL 确认后异步执行产生的输出 token 归入该轮已有的 assistant 消息。 */
+    @Update("UPDATE chat_message SET tokens = COALESCE(tokens, 0) + #{tokens} " +
+            "WHERE id = (SELECT id FROM chat_message WHERE session_id = #{sessionId} " +
+            "AND role = 'assistant' ORDER BY created_at DESC LIMIT 1)")
+    int addTokensToLatestAssistant(@Param("sessionId") Long sessionId, @Param("tokens") int tokens);
 }

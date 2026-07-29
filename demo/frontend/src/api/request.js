@@ -27,10 +27,10 @@ request.interceptors.response.use(
   (response) => {
     const res = response.data
     if (res && typeof res === 'object' && 'code' in res) {
-      if (res.code === 200 || res.code === 0) {
+      if (res.code >= 200 && res.code < 300) {
         return res.data !== undefined ? res.data : res
       }
-      return Promise.reject(new Error(res.msg || '请求失败'))
+      return Promise.reject(new Error(res.message || res.msg || '请求失败'))
     }
     return res
   },

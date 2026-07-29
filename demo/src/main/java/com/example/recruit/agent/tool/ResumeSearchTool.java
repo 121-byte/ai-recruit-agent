@@ -1,7 +1,7 @@
 package com.example.recruit.agent.tool;
 
 import com.example.recruit.dal.entity.Resume;
-import com.example.recruit.service.ResumeService;
+import com.example.recruit.module.resume.application.ResumeService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import org.springframework.stereotype.Component;

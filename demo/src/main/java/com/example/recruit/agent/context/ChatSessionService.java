@@ -69,11 +69,15 @@ public class ChatSessionService {
         return s;
     }
 
-    public void deleteSession(Long sessionId) {
+    public boolean deleteSession(Long sessionId, Long userId) {
+        if (sessionId == null || userId == null) {
+            return false;
+        }
         try {
-            sessionMapper.deleteById(sessionId);
+            return sessionMapper.deleteByIdAndUserId(sessionId, userId) > 0;
         } catch (Exception e) {
             log.warn("deleteSession failed: {}", e.getMessage());
+            return false;
         }
     }
 
@@ -102,11 +106,12 @@ public class ChatSessionService {
         }
     }
 
-    public ChatMessage saveMessage(Long sessionId, String role, String content, Integer tokens) {
+    public ChatMessage saveMessage(Long sessionId, String role, String content, String reasoning, Integer tokens) {
         ChatMessage m = new ChatMessage();
         m.setSessionId(sessionId);
         m.setRole(role);
         m.setContent(content);
+        m.setReasoning(reasoning);
         m.setTokens(tokens);
         m.setCreatedAt(LocalDateTime.now());
         try {
@@ -115,6 +120,19 @@ public class ChatSessionService {
             log.warn("saveMessage failed: {}", e.getMessage());
         }
         return m;
+    }
+
+    /** HITL 的确认执行沿用原始轮次，仅补充该轮 assistant 的输出 token。 */
+    public void addTokensToLatestAssistant(Long sessionId, int tokens) {
+        if (sessionId == null || tokens <= 0) {
+            return;
+        }
+        try {
+            messageMapper.addTokensToLatestAssistant(sessionId, tokens);
+            touch(sessionId);
+        } catch (Exception e) {
+            log.warn("add HITL assistant tokens failed: {}", e.getMessage());
+        }
     }
 
     /** 会话 token 统计: total/input(role=user)/output(role=assistant)。 */

@@ -1,8 +1,8 @@
 package com.example.recruit.agent.tool;
 
 import com.example.recruit.dal.entity.Question;
-import com.example.recruit.service.InterviewService;
-import com.example.recruit.service.QuestionService;
+import com.example.recruit.module.interview.application.InterviewService;
+import com.example.recruit.module.interview.application.QuestionService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import org.springframework.stereotype.Component;

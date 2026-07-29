@@ -65,6 +65,10 @@ public class DeepSeekModelService {
         return doChat(stripModelPrefix(props.getAi().getModelPrimary()), systemPrompt, userMessage);
     }
 
+    public ChatResult chatWithUsage(String systemPrompt, String userMessage) {
+        return doChatWithUsage(stripModelPrefix(props.getAi().getModelPrimary()), systemPrompt, userMessage);
+    }
+
     public String chatFast(String systemPrompt, String userMessage) {
         return doChat(stripModelPrefix(props.getAi().getModelFast()), systemPrompt, userMessage);
     }
@@ -76,6 +80,11 @@ public class DeepSeekModelService {
     public String chatJson(String systemPrompt, String userMessage) {
         String sys = systemPrompt + "\n请严格以 JSON 输出，不要包含 markdown 代码块标记。";
         return doChat(stripModelPrefix(props.getAi().getModelPrimary()), sys, userMessage);
+    }
+
+    public ChatResult chatJsonWithUsage(String systemPrompt, String userMessage) {
+        String sys = systemPrompt + "\n请严格以 JSON 输出，不要包含 markdown 代码块标记。";
+        return doChatWithUsage(stripModelPrefix(props.getAi().getModelPrimary()), sys, userMessage);
     }
 
     public String chatWithTools(String systemPrompt, String userMessage, List<Map<String, Object>> tools) {
@@ -110,7 +119,7 @@ public class DeepSeekModelService {
             String reply = mockReply(userMessage);
             return reactor.core.publisher.Flux.create(sink -> {
                 for (char c : reply.toCharArray()) {
-                    sink.next(new StreamChunk(String.valueOf(c), 0, 0));
+                    sink.next(new StreamChunk(String.valueOf(c), "", 0, 0));
                 }
                 sink.complete();
             });
@@ -119,9 +128,11 @@ public class DeepSeekModelService {
     }
 
     /**
-     * 流式对话的单个 chunk: delta 为本轮增量文本, inputTokens/outputTokens 仅在含 usage 的末块非零。
+     * 流式对话的单个 chunk: delta 为本轮正文增量, reasoning 为思维链增量 (DeepSeek 思考模式
+     * 先流 reasoning_content 后流 content, 两者分离以便前端分别渲染到思考面板与正文气泡),
+     * inputTokens/outputTokens 仅在含 usage 的末块非零。
      */
-    public record StreamChunk(String delta, int inputTokens, int outputTokens) {
+    public record StreamChunk(String delta, String reasoning, int inputTokens, int outputTokens) {
         public int totalTokens() {
             return inputTokens + outputTokens;
         }
@@ -138,8 +149,8 @@ public class DeepSeekModelService {
             String response = postChat(model, systemPrompt, userMessage, false);
             return extractContent(mapper.readTree(response));
         } catch (Exception e) {
-            log.error("LLM chat failed, falling back to mock: {}", e.getMessage());
-            return mockReply(userMessage);
+            log.error("LLM chat failed: {}", e.getMessage());
+            throw new IllegalStateException("LLM 调用失败，请稍后重试", e);
         }
     }
 
@@ -166,10 +177,10 @@ public class DeepSeekModelService {
                     continue;
                 }
                 log.error("LLM chatWithUsage failed: {}", e.getMessage());
-                return new ChatResult(mockReply(userMessage), 0, 0);
+                throw new IllegalStateException("LLM 调用失败，请稍后重试", e);
             }
         }
-        return new ChatResult(mockReply(userMessage), 0, 0);
+        throw new IllegalStateException("LLM 调用超过重试次数");
     }
 
     /**
@@ -190,6 +201,7 @@ public class DeepSeekModelService {
 
     private reactor.core.publisher.Flux<String> doChatStream(String model, String systemPrompt, String userMessage) {
         ObjectNode requestBody = buildRequestBody(model, systemPrompt, userMessage, true);
+        requestBody.put("stream", true);
         return webClient.post()
                 .uri("/chat/completions")
                 .bodyValue(requestBody)
@@ -200,8 +212,8 @@ public class DeepSeekModelService {
                 .map(chunk -> extractDeltaText(chunk))
                 .filter(text -> !text.isEmpty())
                 .onErrorResume(e -> {
-                    log.warn("LLM stream error, fallback to mock: {}", e.getMessage());
-                    return reactor.core.publisher.Flux.just(mockReply(userMessage));
+                    log.warn("LLM stream error: {}", e.getMessage());
+                    return reactor.core.publisher.Flux.error(new IllegalStateException("LLM 流式调用失败", e));
                 });
     }
 
@@ -210,6 +222,7 @@ public class DeepSeekModelService {
      */
     private reactor.core.publisher.Flux<StreamChunk> doChatStreamWithUsage(String model, String systemPrompt, String userMessage) {
         ObjectNode requestBody = buildRequestBody(model, systemPrompt, userMessage, true);
+        requestBody.put("stream", true);
         return webClient.post()
                 .uri("/chat/completions")
                 .bodyValue(requestBody)
@@ -219,35 +232,57 @@ public class DeepSeekModelService {
                 .filter(chunk -> !chunk.equals("[DONE]"))
                 .map(chunk -> {
                     try {
-                        JsonNode node = mapper.readTree(chunk);
-                        String delta = extractDeltaText(chunk);
+                        String json = stripSsePrefix(chunk);
+                        if (json == null || json.isEmpty() || "[DONE]".equals(json)) {
+                            return new StreamChunk("", "", 0, 0);
+                        }
+                        JsonNode node = mapper.readTree(json);
+                        JsonNode deltaNode = node.path("choices").path(0).path("delta");
+                        String content = deltaNode.path("content").asText("");
+                        String reasoning = deltaNode.path("reasoning_content").asText("");
                         JsonNode usage = node.path("usage");
                         int inTok = usage.isMissingNode() ? 0 : usage.path("prompt_tokens").asInt(0);
                         int outTok = usage.isMissingNode() ? 0 : usage.path("completion_tokens").asInt(0);
-                        return new StreamChunk(delta, inTok, outTok);
+                        return new StreamChunk(content, reasoning, inTok, outTok);
                     } catch (Exception e) {
-                        return new StreamChunk("", 0, 0);
+                        return new StreamChunk("", "", 0, 0);
                     }
                 })
                 .onErrorResume(e -> {
-                    log.warn("LLM stream(usage) error, fallback to mock: {}", e.getMessage());
-                    return reactor.core.publisher.Flux.just(new StreamChunk(mockReply(userMessage), 0, 0));
+                    log.warn("LLM stream(usage) error: {}", e.getMessage());
+                    return reactor.core.publisher.Flux.error(new IllegalStateException("LLM 流式调用失败", e));
                 });
     }
 
-    /** 从一个 SSE 数据 chunk 中提取 delta 文本 (含 reasoning_content 回退)。 */
+    /** 从一个 SSE 数据 chunk 中提取 delta 文本 (含 reasoning_content 回退)。
+     * 兼容 "data: {...}\n" 格式（OpenAI SSE 流式）和裸 JSON 格式（非流式/Mock）。 */
     private String extractDeltaText(String chunk) {
         try {
-            JsonNode node = mapper.readTree(chunk);
-            JsonNode delta = node.path("choices").path(0).path("delta");
-            String text = delta.path("content").asText("");
-            if (text.isEmpty()) {
-                text = delta.path("reasoning_content").asText("");
-            }
-            return text == null ? "" : text;
+            String json = stripSsePrefix(chunk);
+            if (json == null || json.isEmpty() || "[DONE]".equals(json)) return "";
+            JsonNode node = mapper.readTree(json);
+            return extractDeltaFromNode(node);
         } catch (Exception e) {
             return "";
         }
+    }
+
+    /** 剥离 SSE "data: " 前缀，返回纯 JSON 字符串。 */
+    private String stripSsePrefix(String chunk) {
+        if (chunk == null) return null;
+        String s = chunk.startsWith("data:") ? chunk.substring(5).trim() : chunk.trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    /** 从已解析的 JsonNode 中提取 delta 文本（content 优先，回退 reasoning_content）。 */
+    private String extractDeltaFromNode(JsonNode node) {
+        if (node == null) return "";
+        JsonNode delta = node.path("choices").path(0).path("delta");
+        String text = delta.path("content").asText("");
+        if (text.isEmpty()) {
+            text = delta.path("reasoning_content").asText("");
+        }
+        return text == null ? "" : text;
     }
 
     private String postChat(String model, String systemPrompt, String userMessage, boolean stream) {

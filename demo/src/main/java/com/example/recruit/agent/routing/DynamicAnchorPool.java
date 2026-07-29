@@ -1,211 +1,167 @@
 package com.example.recruit.agent.routing;
 
-import com.example.recruit.dal.handler.FloatVectorTypeHandler;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
+import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Iterator;
+import java.util.EnumMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 动态锚点池 (复刻自文档 §4.3 DynamicAnchorPool)。
- *
- * <p>管理 {@code Map<IntentType, LinkedHashSet<AnchorEntry>>}，每类意图最多 200 条动态锚点。
- * LLM 分类置信度 ≥ 0.7 的用户输入会回写为新锚点，使系统在使用中自学习。
- *
- * <p>核心机制：
- * <ul>
- *   <li>语义去重：与新文本 cosine > 0.95 的同类型锚点视为重复，跳过</li>
- *   <li>LRU 淘汰：超过 MAX_PER_TYPE 时移除最旧 (LinkedHashSet 插入顺序)</li>
- *   <li>持久化：每 50 次写入异步 flush 到 data/intent-anchors.json</li>
- * </ul>
+ * 动态意图锚点池，保留为可选的路由增强能力。
+ * 当前路由默认不注册该类为 Spring Bean，因此不会改变现有意图识别行为。
  */
-@Component
 public class DynamicAnchorPool {
 
     private static final Logger log = LoggerFactory.getLogger(DynamicAnchorPool.class);
-
     private static final int MAX_PER_TYPE = 200;
     private static final int FLUSH_INTERVAL = 50;
-    private static final double SEMANTIC_DEDUP_THRESHOLD = 0.95;
-
+    private static final double SEMANTIC_DEDUP_THRESHOLD = 0.98;
     private static final String DATA_FILE = "data/intent-anchors.json";
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final Map<IntentType, LinkedHashSet<AnchorEntry>> pool = new EnumMap<>(IntentType.class);
+    private int writeCount;
 
-    /** 每类一个 LinkedHashSet (LRU 顺序)。线程安全包装。 */
-    private final Map<IntentType, LinkedHashSet<AnchorEntry>> pool = new ConcurrentHashMap<>();
-
-    private int writeCount = 0;
-
-    @PostConstruct
-    void init() {
-        for (IntentType t : IntentType.values()) {
-            pool.put(t, new LinkedHashSet<>());
+    public DynamicAnchorPool() {
+        for (IntentType type : IntentType.values()) {
+            pool.put(type, new LinkedHashSet<>());
         }
+    }
+
+    void init() {
         load();
     }
 
-    /**
-     * 添加动态锚点。
-     *
-     * @return true 若实际新增 (未触发语义去重)
-     */
     public synchronized boolean add(IntentType type, String text, float[] embedding) {
-        if (text == null || text.isBlank() || embedding == null || type == null) {
+        if (type == null || text == null || text.isBlank() || embedding == null || embedding.length == 0) {
             return false;
         }
-        LinkedHashSet<AnchorEntry> set = pool.get(type);
-        if (set == null) {
-            return false;
-        }
-
-        // 1. 语义去重
-        for (AnchorEntry existing : set) {
-            if (FloatVectorTypeHandler.cosine(existing.embedding, embedding) > SEMANTIC_DEDUP_THRESHOLD) {
-                // 命中即更新 lastHitTime，但不新增
-                existing.lastHitTime = System.currentTimeMillis();
+        LinkedHashSet<AnchorEntry> anchors = pool.get(type);
+        for (AnchorEntry anchor : anchors) {
+            if (cosine(anchor.embedding, embedding) >= SEMANTIC_DEDUP_THRESHOLD) {
+                anchor.lastHitTime = System.currentTimeMillis();
                 return false;
             }
         }
-
-        // 2. 新增 (LinkedHashSet LRU)
         AnchorEntry entry = new AnchorEntry();
         entry.text = text;
         entry.embedding = embedding;
         entry.createdAt = System.currentTimeMillis();
         entry.lastHitTime = entry.createdAt;
-        set.add(entry);
-
-        // 3. 超容量移除最旧
-        while (set.size() > MAX_PER_TYPE) {
-            Iterator<AnchorEntry> it = set.iterator();
-            if (it.hasNext()) {
-                it.next();
-                it.remove();
-            }
+        anchors.add(entry);
+        while (anchors.size() > MAX_PER_TYPE) {
+            anchors.remove(anchors.iterator().next());
         }
-
-        // 4. 周期性异步 flush
-        writeCount++;
-        if (writeCount % FLUSH_INTERVAL == 0) {
+        if (++writeCount % FLUSH_INTERVAL == 0) {
             new Thread(this::flush, "anchor-flush").start();
         }
         return true;
     }
 
-    /** 返回某类意图的全部动态锚点 (供 IntentRouter 遍历匹配)。 */
     public LinkedHashSet<AnchorEntry> getAnchors(IntentType type) {
         return pool.getOrDefault(type, new LinkedHashSet<>());
     }
 
-    /** 持久化到 data/intent-anchors.json (异步调用)。 */
     public synchronized void flush() {
         try {
             File file = new File(DATA_FILE);
             File parent = file.getParentFile();
             if (parent != null && !parent.exists() && !parent.mkdirs()) {
-                log.warn("Failed to mkdirs for {}", parent);
+                log.warn("Failed to create dynamic anchor directory: {}", parent);
             }
             ObjectNode root = mapper.createObjectNode();
-            for (Map.Entry<IntentType, LinkedHashSet<AnchorEntry>> e : pool.entrySet()) {
-                ArrayNode arr = root.putArray(e.getKey().name());
-                for (AnchorEntry entry : e.getValue()) {
-                    ObjectNode o = arr.addObject();
-                    o.put("text", entry.text);
-                    o.put("createdAt", entry.createdAt);
-                    o.put("lastHitTime", entry.lastHitTime);
-                    // embedding 存为 JSON 数组
-                    ArrayNode emb = o.putArray("embedding");
-                    for (float v : entry.embedding) {
-                        emb.add(v);
+            for (Map.Entry<IntentType, LinkedHashSet<AnchorEntry>> entry : pool.entrySet()) {
+                ArrayNode values = root.putArray(entry.getKey().name());
+                for (AnchorEntry anchor : entry.getValue()) {
+                    ObjectNode node = values.addObject();
+                    node.put("text", anchor.text);
+                    node.put("createdAt", anchor.createdAt);
+                    node.put("lastHitTime", anchor.lastHitTime);
+                    ArrayNode vector = node.putArray("embedding");
+                    for (float value : anchor.embedding) {
+                        vector.add(value);
                     }
                 }
             }
-            Files.writeString(Path.of(DATA_FILE), mapper.writerWithDefaultPrettyPrinter()
-                    .writeValueAsString(root));
-            log.debug("DynamicAnchorPool flushed: {} types", pool.size());
-        } catch (Exception e) {
-            log.warn("Flush dynamic anchors failed: {}", e.getMessage());
+            Files.writeString(Path.of(DATA_FILE), mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root));
+        } catch (Exception exception) {
+            log.warn("Flush dynamic anchors failed: {}", exception.getMessage());
         }
     }
 
-    /** 启动时从 JSON 加载历史锚点；文件中无 embedding 则由 IntentRouter 补算。 */
-    @SuppressWarnings("unchecked")
     public synchronized void load() {
         try {
             File file = new File(DATA_FILE);
             if (!file.exists()) {
                 return;
             }
-            var root = mapper.readTree(file);
-            root.fields().forEachRemaining(entry -> {
-                IntentType type;
-                try {
-                    type = IntentType.valueOf(entry.getKey());
-                } catch (IllegalArgumentException ex) {
-                    return;
-                }
-                LinkedHashSet<AnchorEntry> set = pool.get(type);
-                if (set == null) {
-                    return;
-                }
-                for (var node : entry.getValue()) {
-                    AnchorEntry a = new AnchorEntry();
-                    a.text = node.path("text").asText();
-                    a.createdAt = node.path("createdAt").asLong();
-                    a.lastHitTime = node.path("lastHitTime").asLong(a.createdAt);
-                    var embNode = node.path("embedding");
-                    if (embNode.isArray() && embNode.size() > 0) {
-                        float[] emb = new float[embNode.size()];
-                        for (int i = 0; i < embNode.size(); i++) {
-                            emb[i] = (float) embNode.get(i).asDouble();
-                        }
-                        a.embedding = emb;
-                        set.add(a);
-                    }
-                    // 无 embedding 的锚点: 由 IntentRouter 在 initAnchors() 中补算
-                }
-            });
-            log.info("DynamicAnchorPool loaded from {}", DATA_FILE);
-        } catch (Exception e) {
-            log.warn("Load dynamic anchors failed: {}", e.getMessage());
+            mapper.readTree(file).fields().forEachRemaining(entry -> loadAnchors(entry.getKey(), entry.getValue()));
+        } catch (Exception exception) {
+            log.warn("Load dynamic anchors failed: {}", exception.getMessage());
         }
     }
 
-    /** 锚点条目 (复刻自文档 §4.3 AnchorEntry)。 */
+    void destroy() {
+        flush();
+    }
+
+    private void loadAnchors(String typeName, JsonNode values) {
+        final IntentType type;
+        try {
+            type = IntentType.valueOf(typeName);
+        } catch (IllegalArgumentException exception) {
+            return;
+        }
+        LinkedHashSet<AnchorEntry> anchors = pool.get(type);
+        if (anchors == null) {
+            return;
+        }
+        for (JsonNode node : values) {
+            JsonNode vector = node.path("embedding");
+            if (!vector.isArray() || vector.isEmpty()) {
+                continue;
+            }
+            AnchorEntry entry = new AnchorEntry();
+            entry.text = node.path("text").asText();
+            entry.createdAt = node.path("createdAt").asLong();
+            entry.lastHitTime = node.path("lastHitTime").asLong(entry.createdAt);
+            entry.embedding = new float[vector.size()];
+            for (int index = 0; index < vector.size(); index++) {
+                entry.embedding[index] = (float) vector.get(index).asDouble();
+            }
+            anchors.add(entry);
+        }
+    }
+
+    private double cosine(float[] left, float[] right) {
+        if (left.length != right.length) {
+            return -1;
+        }
+        double dot = 0;
+        double leftNorm = 0;
+        double rightNorm = 0;
+        for (int index = 0; index < left.length; index++) {
+            dot += left[index] * right[index];
+            leftNorm += left[index] * left[index];
+            rightNorm += right[index] * right[index];
+        }
+        return leftNorm == 0 || rightNorm == 0 ? -1 : dot / Math.sqrt(leftNorm * rightNorm);
+    }
+
+    @Data
     public static class AnchorEntry {
         public String text;
         public float[] embedding;
         public long createdAt;
         public long lastHitTime;
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof AnchorEntry that)) return false;
-            return text != null && text.equals(that.text);
-        }
-
-        @Override
-        public int hashCode() {
-            return text == null ? 0 : text.hashCode();
-        }
-    }
-
-    @PreDestroy
-    void destroy() {
-        flush();
     }
 }

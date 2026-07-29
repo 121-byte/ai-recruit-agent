@@ -2,6 +2,7 @@ package com.example.recruit.dal.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.example.recruit.dal.entity.ChatSession;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -14,6 +15,9 @@ import java.util.List;
  */
 @Mapper
 public interface ChatSessionMapper extends BaseMapper<ChatSession> {
+
+    @Delete("DELETE FROM chat_session WHERE id = #{id} AND user_id = #{userId}")
+    int deleteByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
     /**
      * 软删除 (无 deleted 列, 简化为刷新 updated_at 标记)。

@@ -14,6 +14,8 @@ package com.example.recruit.agent.routing;
  */
 public enum IntentType {
     CHITCHAT,
+    /** 路由不确定时要求用户补充信息，禁止进入工具链。 */
+    CLARIFY,
     SINGLE_TOOL,
     COMPOSITE,
     HITL,

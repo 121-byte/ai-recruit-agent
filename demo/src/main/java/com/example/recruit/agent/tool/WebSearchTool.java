@@ -88,8 +88,8 @@ public class WebSearchTool {
             }
             return Map.of("answer", sb.toString(), "sources", sources, "query", query);
         } catch (Exception e) {
-            log.warn("webSearch failed, fallback to mock: {}", e.getMessage());
-            return mockSearch(query);
+            log.warn("webSearch failed: {}", e.getMessage());
+            throw new IllegalStateException("联网搜索失败，请稍后重试", e);
         }
     }
 

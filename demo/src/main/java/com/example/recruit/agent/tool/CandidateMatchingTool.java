@@ -1,6 +1,6 @@
 package com.example.recruit.agent.tool;
 
-import com.example.recruit.service.CandidateMatchService;
+import com.example.recruit.module.match.application.CandidateMatchService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import org.springframework.stereotype.Component;

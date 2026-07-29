@@ -1,6 +1,6 @@
 package com.example.recruit.agent.tool;
 
-import com.example.recruit.service.OutreachService;
+import com.example.recruit.module.outreach.application.OutreachService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import org.springframework.stereotype.Component;
