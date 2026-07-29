@@ -1,6 +1,6 @@
 package com.example.recruit.controller;
 
-import com.example.recruit.service.analysis.ComparisonResult;
+import com.example.recruit.domain.analysis.ComparisonResult;
 import com.example.recruit.service.ResumeAnalysisService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;

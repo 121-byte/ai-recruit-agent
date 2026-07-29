@@ -1,33 +1,34 @@
-package com.example.recruit.service.analysis;
+package com.example.recruit.domain.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 风险评估 POJO (复刻对齐清单 §1)。
- * 描述候选人潜在风险等级、风险因素与缓释建议。
+ * 候选人对比结果 POJO (复刻对齐清单 §1)。
+ * 描述多名候选人的对比评分与综合结论。
  */
 @Data
-public class RiskAssessment {
+public class ComparisonResult {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** low/medium/high */
-    private String level;
-    private List<String> factors = new ArrayList<>();
-    private List<String> mitigation = new ArrayList<>();
+    private List<String> candidates = new ArrayList<>();
+    private Map<String, Object> scores = new LinkedHashMap<>();
+    private String summary;
 
     /** 从 JsonNode 反序列化。 */
-    public static RiskAssessment fromJson(JsonNode json) {
+    public static ComparisonResult fromJson(JsonNode json) {
         if (json == null || json.isMissingNode() || json.isNull()) {
             return null;
         }
         try {
-            return MAPPER.convertValue(json, RiskAssessment.class);
+            return MAPPER.convertValue(json, ComparisonResult.class);
         } catch (Exception e) {
             return null;
         }

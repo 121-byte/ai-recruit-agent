@@ -1,34 +1,35 @@
-package com.example.recruit.service.analysis;
+package com.example.recruit.domain.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * 候选人对比结果 POJO (复刻对齐清单 §1)。
- * 描述多名候选人的对比评分与综合结论。
+ * 潜力评估 POJO (复刻对齐清单 §1)。
+ * 描述候选人成长上限、领导力、创新力等潜力维度。
  */
 @Data
-public class ComparisonResult {
+public class PotentialAssessment {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private List<String> candidates = new ArrayList<>();
-    private Map<String, Object> scores = new LinkedHashMap<>();
+    private String growthCeiling;
+    private String leadership;
+    private String innovation;
+    private String adaptability;
     private String summary;
+    private List<String> highlights = new ArrayList<>();
 
     /** 从 JsonNode 反序列化。 */
-    public static ComparisonResult fromJson(JsonNode json) {
+    public static PotentialAssessment fromJson(JsonNode json) {
         if (json == null || json.isMissingNode() || json.isNull()) {
             return null;
         }
         try {
-            return MAPPER.convertValue(json, ComparisonResult.class);
+            return MAPPER.convertValue(json, PotentialAssessment.class);
         } catch (Exception e) {
             return null;
         }

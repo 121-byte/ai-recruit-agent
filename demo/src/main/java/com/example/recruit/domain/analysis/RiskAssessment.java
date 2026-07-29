@@ -1,4 +1,4 @@
-package com.example.recruit.service.analysis;
+package com.example.recruit.domain.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,28 +8,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 潜力评估 POJO (复刻对齐清单 §1)。
- * 描述候选人成长上限、领导力、创新力等潜力维度。
+ * 风险评估 POJO (复刻对齐清单 §1)。
+ * 描述候选人潜在风险等级、风险因素与缓释建议。
  */
 @Data
-public class PotentialAssessment {
+public class RiskAssessment {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private String growthCeiling;
-    private String leadership;
-    private String innovation;
-    private String adaptability;
-    private String summary;
-    private List<String> highlights = new ArrayList<>();
+    /** low/medium/high */
+    private String level;
+    private List<String> factors = new ArrayList<>();
+    private List<String> mitigation = new ArrayList<>();
 
     /** 从 JsonNode 反序列化。 */
-    public static PotentialAssessment fromJson(JsonNode json) {
+    public static RiskAssessment fromJson(JsonNode json) {
         if (json == null || json.isMissingNode() || json.isNull()) {
             return null;
         }
         try {
-            return MAPPER.convertValue(json, PotentialAssessment.class);
+            return MAPPER.convertValue(json, RiskAssessment.class);
         } catch (Exception e) {
             return null;
         }

@@ -1,31 +1,34 @@
-package com.example.recruit.service.analysis;
+package com.example.recruit.domain.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
- * 简历分析结果聚合 POJO (复刻对齐清单 §1)。
- * 汇总结构化数据、隐性洞察、潜力评估、风险评估与对比结果。
+ * 隐性特质洞察 POJO (复刻对齐清单 §1)。
+ * 描述从简历中推断出的潜在领导力、学习敏锐度、文化契合度等隐性特质。
  */
 @Data
-public class ResumeAnalysisResult {
+public class ImplicitInsights {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private StructuredData structuredData;
-    private ImplicitInsights implicitInsights;
-    private PotentialAssessment potentialAssessment;
-    private RiskAssessment riskAssessment;
-    private ComparisonResult comparisonResult;
+    private String leadershipPotential;
+    private String learningAgility;
+    private String cultureFit;
+    private String motivation;
+    private List<String> notes = new ArrayList<>();
 
     /** 从 JsonNode 反序列化。 */
-    public static ResumeAnalysisResult fromJson(JsonNode json) {
+    public static ImplicitInsights fromJson(JsonNode json) {
         if (json == null || json.isMissingNode() || json.isNull()) {
             return null;
         }
         try {
-            return MAPPER.convertValue(json, ResumeAnalysisResult.class);
+            return MAPPER.convertValue(json, ImplicitInsights.class);
         } catch (Exception e) {
             return null;
         }

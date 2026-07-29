@@ -1,7 +1,7 @@
 package com.example.recruit.agent.tool;
 
 import com.example.recruit.service.ResumeAnalysisService;
-import com.example.recruit.service.analysis.ResumeAnalysisResult;
+import com.example.recruit.domain.analysis.ResumeAnalysisResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import io.agentscope.core.tool.Tool;

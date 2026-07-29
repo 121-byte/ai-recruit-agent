@@ -1,4 +1,4 @@
-package com.example.recruit.service.analysis;
+package com.example.recruit.domain.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
