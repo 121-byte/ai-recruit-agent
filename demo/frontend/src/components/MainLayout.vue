@@ -20,7 +20,7 @@
 
       <nav class="top-nav-center" aria-label="主导航">
         <div
-          v-for="item in navItems"
+          v-for="item in visibleNavItems"
           :key="item.path"
           class="nav-item"
           :class="{ active: isActive(item.path) }"
@@ -122,12 +122,32 @@ const navItems = [
     path: '/chat', label: 'Agent 对话',
     icon: '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
   },
+  {
+    path: '/users', label: '用户管理',
+    icon: '<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  },
 ]
 
 const currentTitle = computed(() => route.meta?.title || 'AI 招聘')
 
+// 路径 -> 允许角色; 未在此映射中的路径对全部角色可见
+const routeRoles = {
+  '/matches': ['HR'],
+  '/interviews': ['HR'],
+  '/interview-agent': ['HR'],
+  '/users': ['OPS'],
+}
+const visibleNavItems = computed(() =>
+  navItems.filter((i) => {
+    const need = routeRoles[i.path]
+    return !need || need.some((r) => authStore.roles.includes(r))
+  })
+)
+
 const roleMap = { HR: '招聘负责人', OPS: '运营人员', ADMIN: '管理员' }
-const roleLabel = computed(() => roleMap[authStore.role] || authStore.role || '用户')
+const roleLabel = computed(() =>
+  authStore.roles.map((r) => roleMap[r] || r).join(' / ') || '用户'
+)
 
 const avatarText = computed(() => (authStore.username || '用').charAt(0).toUpperCase())
 

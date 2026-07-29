@@ -8,8 +8,16 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
 
   const isAuthenticated = computed(() => !!token.value)
-  const role = computed(() => user.value?.role || '')
+  // 后端登录返回 user.roles (复数数组, 如 ["HR"]/["OPS"]), 一切显隐都基于它
+  const roles = computed(() => user.value?.roles || [])
+  const role = computed(() => roles.value[0] || '')   // 主角色, 用于标签
   const username = computed(() => user.value?.username || user.value?.name || '')
+
+  // 是否拥有指定角色之一; 不传参视为不限制 (用于路由/菜单显隐)
+  function hasAnyRole(...codes) {
+    if (!codes || codes.length === 0) return true
+    return codes.some((c) => roles.value.includes(c))
+  }
 
   function login(tokenValue, userInfo) {
     token.value = tokenValue
@@ -25,5 +33,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('user')
   }
 
-  return { token, user, isAuthenticated, role, username, login, logout }
+  return { token, user, isAuthenticated, roles, role, username, hasAnyRole, login, logout }
 })

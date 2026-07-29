@@ -36,19 +36,25 @@ const routes = [
     path: '/matches',
     name: 'Matches',
     component: () => import('@/views/MatchesView.vue'),
-    meta: { requiresAuth: true, title: '候选人匹配' }
+    meta: { requiresAuth: true, roles: ['HR'], title: '候选人匹配' }
   },
   {
     path: '/interviews',
     name: 'Interviews',
     component: () => import('@/views/InterviewsView.vue'),
-    meta: { requiresAuth: true, title: '面试管理' }
+    meta: { requiresAuth: true, roles: ['HR'], title: '面试管理' }
   },
   {
     path: '/interview-agent',
     name: 'InterviewAgent',
     component: () => import('@/views/InterviewAgentView.vue'),
-    meta: { requiresAuth: true, title: 'AI 面试官' }
+    meta: { requiresAuth: true, roles: ['HR'], title: 'AI 面试官' }
+  },
+  {
+    path: '/users',
+    name: 'Users',
+    component: () => import('@/views/UsersView.vue'),
+    meta: { requiresAuth: true, roles: ['OPS'], title: '用户管理' }
   },
   {
     path: '/:pathMatch(.*)*',
@@ -61,18 +67,19 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫：未认证跳 /login（§12.1）
+// 路由守卫：未认证跳 /login（§12.1）+ 角色级守卫
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
-  } else {
+  } else if (to.path === '/login' && authStore.isAuthenticated) {
     // 已登录访问 /login 跳首页
-    if (to.path === '/login' && authStore.isAuthenticated) {
-      next('/')
-    } else {
-      next()
-    }
+    next('/')
+  } else if (to.meta.roles && to.meta.roles.length && !authStore.hasAnyRole(...to.meta.roles)) {
+    // 声明了 meta.roles 且当前用户无交集 → 回首页
+    next('/')
+  } else {
+    next()
   }
 })
 

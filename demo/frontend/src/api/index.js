@@ -410,6 +410,11 @@ export function listUsers(params = {}) {
   return request.get('/admin/users', { params })
 }
 
+// 角色主数据 (供角色多选下拉)
+export function listRoles() {
+  return request.get('/admin/users/roles')
+}
+
 // 新建用户
 export function createUser(payload) {
   return request.post('/admin/users', payload)
@@ -425,9 +430,9 @@ export function deleteUser(userId) {
   return request.delete(`/admin/users/${userId}`)
 }
 
-// 分配用户角色
-export function updateUserRoles(userId, roleIds) {
-  return request.put(`/admin/users/${userId}/roles`, { roleIds })
+// 分配用户角色 (body { roles: ['HR','OPS'] })
+export function updateUserRoles(userId, roles) {
+  return request.put(`/admin/users/${userId}/roles`, { roles })
 }
 
 // ===== 仪表盘（/api/dashboard） =====

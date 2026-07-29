@@ -119,6 +119,29 @@ public class UserService {
         }
     }
 
+    /** 用户的角色 code 列表 (列表展示/编辑回显用, 一条 join 查询)。 */
+    public List<String> roleCodesOf(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        try {
+            return roleMapper.selectRoleCodesByUserId(userId);
+        } catch (Exception e) {
+            log.warn("roleCodesOf failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 查询全部角色 (角色主数据, 供前端多选下拉)。 */
+    public List<SysRole> listRoles() {
+        try {
+            return roleMapper.selectAll();
+        } catch (Exception e) {
+            log.warn("listRoles failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
     /**
      * 重置用户角色 (先删除原有角色关联, 再按 roleCodes 重建)。
      * roleCodes 为空时仅清空。
