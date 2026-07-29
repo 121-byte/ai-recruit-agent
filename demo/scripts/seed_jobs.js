@@ -5,12 +5,14 @@
  */
 const { Client } = require('pg')
 
+// 数据库连接配置从环境变量读取, 不在代码中硬编码任何主机/凭证
+//   PG_HOST / PG_PORT / PG_USER / PG_PASSWORD / PG_DATABASE
 const client = new Client({
   host: process.env.PG_HOST || 'localhost',
-  port: 25432,
-  user: 'postgres',
+  port: parseInt(process.env.PG_PORT || '5432', 10),
+  user: process.env.PG_USER || 'postgres',
   password: process.env.PG_PASSWORD || '',
-  database: 'postgres',
+  database: process.env.PG_DATABASE || 'postgres',
 })
 
 const JOBS = [
