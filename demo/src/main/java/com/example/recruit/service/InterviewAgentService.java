@@ -41,15 +41,18 @@ public class InterviewAgentService {
     private final InterviewSessionMapper sessionMapper;
     private final InterviewReportMapper reportMapper;
     private final DeepSeekModelService deepSeek;
+    private final InterviewStatusBar statusBar;
 
     public InterviewAgentService(InterviewMapper interviewMapper,
                                   InterviewSessionMapper sessionMapper,
                                   InterviewReportMapper reportMapper,
-                                  DeepSeekModelService deepSeek) {
+                                  DeepSeekModelService deepSeek,
+                                  InterviewStatusBar statusBar) {
         this.interviewMapper = interviewMapper;
         this.sessionMapper = sessionMapper;
         this.reportMapper = reportMapper;
         this.deepSeek = deepSeek;
+        this.statusBar = statusBar;
     }
 
     /**
@@ -90,7 +93,7 @@ public class InterviewAgentService {
         String sys = "你是资深 AI 面试官。请用专业、友好的语气开场，并提出第一道面试题。";
         String reply;
         try {
-            reply = deepSeek.chat(sys, "岗位相关面试，请开始。");
+            reply = deepSeek.chat(sys, statusBar.appendTo("岗位相关面试，请开始。", session));
         } catch (Exception e) {
             log.warn("generate opening failed: {}", e.getMessage());
             reply = "[开场白生成失败] 请开始你的自我介绍。";
@@ -143,6 +146,8 @@ public class InterviewAgentService {
 
         // 追加候选人回答
         ObjectNode messages = appendMessage(session.getMessages(), "candidate", answer == null ? "" : answer);
+        // 状态栏需反映「含最新回答」的对话，先回填再据此计算
+        session.setMessages(messages);
 
         String sys = "你是 AI 面试官。请评估候选人回答，给出评分(0-100)、追问或下一题。以JSON输出: {\"score\":80,\"feedback\":\"...\",\"next\":\"追问/下一题内容\"}";
         if (difficulty != null && !difficulty.isBlank()) {
@@ -150,7 +155,7 @@ public class InterviewAgentService {
         }
         String reply;
         try {
-            reply = deepSeek.chatJson(sys, "回答: " + (answer == null ? "" : answer));
+            reply = deepSeek.chatJson(sys, statusBar.appendTo("回答: " + (answer == null ? "" : answer), session));
         } catch (Exception e) {
             log.warn("evaluate answer failed: {}", e.getMessage());
             reply = "";
@@ -199,7 +204,8 @@ public class InterviewAgentService {
             return Flux.just(ServerSentEvent.<String>builder().event("text").data("[会话不存在]").build());
         }
         String sys = "你是 AI 面试官。请评估候选人回答并给出追问，流式输出。";
-        return deepSeek.chatStream(sys, "回答: " + answer)
+        String user = statusBar.appendTo("回答: " + answer, session);
+        return deepSeek.chatStream(sys, user)
                 .map(delta -> ServerSentEvent.<String>builder().event("text").data(delta).build())
                 .onErrorResume(e -> {
                     log.warn("stream evaluate failed: {}", e.getMessage());
@@ -238,9 +244,11 @@ public class InterviewAgentService {
             return out;
         }
         String sys = "你是面试官辅助助手。基于面试上下文给出提示建议，以 JSON 输出: {\"suggestion\":\"...\",\"focus_points\":[\"...\"]}";
+        InterviewSession assistSession = findSessionByInterviewId(interviewId);
+        String assistUser = statusBar.appendTo("面试 ID: " + interviewId, assistSession);
         String reply;
         try {
-            reply = deepSeek.chatJson(sys, "面试 ID: " + interviewId);
+            reply = deepSeek.chatJson(sys, assistUser);
         } catch (Exception e) {
             log.warn("getAssistSuggestion failed: {}", e.getMessage());
             reply = "";
@@ -268,9 +276,11 @@ public class InterviewAgentService {
                 你是面试评估专家。基于面试对话生成报告，以 JSON 输出:
                 {"overall_score":0,"tech_score":0,"comm_score":0,"problem_solving_score":0,"culture_fit_score":0,
                  "strengths":["..."],"risks":["..."],"hiring_suggestion":"强烈推荐/推荐/待定/不推荐","summary":"..."}""";
+        InterviewSession reportSession = findSessionByInterviewId(interviewId);
+        String reportUser = statusBar.appendTo("面试 ID: " + interviewId, reportSession);
         String reply;
         try {
-            reply = deepSeek.chatJson(sys, "面试 ID: " + interviewId);
+            reply = deepSeek.chatJson(sys, reportUser);
         } catch (Exception e) {
             log.warn("getReport chat failed: {}", e.getMessage());
             reply = "";
