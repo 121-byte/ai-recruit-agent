@@ -10,7 +10,7 @@ import com.example.recruit.agent.tool.JobAnalysisTool;
 import com.example.recruit.agent.tool.OutreachAgentTool;
 import com.example.recruit.agent.tool.ResumeSearchTool;
 import com.example.recruit.config.AppProperties;
-import com.example.recruit.llm.MockChatModel;
+import com.example.recruit.infra.llm.MockChatModel;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;

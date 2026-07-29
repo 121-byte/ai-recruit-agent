@@ -1,7 +1,7 @@
 package com.example.recruit.agent.routing;
 
-import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.EmbeddingService;
+import com.example.recruit.infra.llm.DeepSeekModelService;
+import com.example.recruit.infra.retrieval.EmbeddingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

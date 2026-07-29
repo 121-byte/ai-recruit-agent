@@ -1,8 +1,8 @@
 package com.example.recruit.agent.routing;
 
-import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.EmbeddingService;
-import com.example.recruit.llm.JsonGuard;
+import com.example.recruit.infra.llm.DeepSeekModelService;
+import com.example.recruit.infra.retrieval.EmbeddingService;
+import com.example.recruit.infra.llm.JsonGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;

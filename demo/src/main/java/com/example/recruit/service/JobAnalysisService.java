@@ -2,9 +2,9 @@ package com.example.recruit.service;
 
 import com.example.recruit.dal.entity.JobProfile;
 import com.example.recruit.dal.mapper.JobProfileMapper;
-import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.EmbeddingService;
-import com.example.recruit.llm.JsonGuard;
+import com.example.recruit.infra.llm.DeepSeekModelService;
+import com.example.recruit.infra.retrieval.EmbeddingService;
+import com.example.recruit.infra.llm.JsonGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;

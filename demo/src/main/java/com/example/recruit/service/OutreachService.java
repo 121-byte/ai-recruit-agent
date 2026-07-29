@@ -7,7 +7,7 @@ import com.example.recruit.dal.entity.Resume;
 import com.example.recruit.dal.mapper.JobProfileMapper;
 import com.example.recruit.dal.mapper.OutreachMapper;
 import com.example.recruit.dal.mapper.ResumeMapper;
-import com.example.recruit.llm.DeepSeekModelService;
+import com.example.recruit.infra.llm.DeepSeekModelService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

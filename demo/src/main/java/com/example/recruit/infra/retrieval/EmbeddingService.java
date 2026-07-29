@@ -1,4 +1,4 @@
-package com.example.recruit.llm;
+package com.example.recruit.infra.retrieval;
 
 import com.example.recruit.config.AppProperties;
 import com.fasterxml.jackson.databind.JsonNode;

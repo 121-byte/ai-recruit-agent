@@ -11,7 +11,7 @@ import com.example.recruit.service.ExportService;
 import com.example.recruit.service.InterviewService;
 import com.example.recruit.service.JobAnalysisService;
 import com.example.recruit.service.QuestionService;
-import com.example.recruit.llm.DeepSeekModelService;
+import com.example.recruit.infra.llm.DeepSeekModelService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;

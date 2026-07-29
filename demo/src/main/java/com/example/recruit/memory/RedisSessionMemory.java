@@ -1,7 +1,7 @@
 package com.example.recruit.memory;
 
 import com.example.recruit.config.AppProperties;
-import com.example.recruit.llm.DeepSeekModelService;
+import com.example.recruit.infra.llm.DeepSeekModelService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;

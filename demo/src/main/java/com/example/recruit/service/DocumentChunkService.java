@@ -6,7 +6,7 @@ import com.example.recruit.dal.entity.Resume;
 import com.example.recruit.dal.mapper.DocumentChunkMapper;
 import com.example.recruit.dal.mapper.JobProfileMapper;
 import com.example.recruit.dal.mapper.ResumeMapper;
-import com.example.recruit.llm.EmbeddingService;
+import com.example.recruit.infra.retrieval.EmbeddingService;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

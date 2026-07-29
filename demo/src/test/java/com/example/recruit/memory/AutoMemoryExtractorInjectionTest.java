@@ -1,6 +1,6 @@
 package com.example.recruit.memory;
 
-import com.example.recruit.llm.DeepSeekModelService;
+import com.example.recruit.infra.llm.DeepSeekModelService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

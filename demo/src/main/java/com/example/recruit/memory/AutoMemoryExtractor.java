@@ -1,7 +1,7 @@
 package com.example.recruit.memory;
 
-import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.JsonGuard;
+import com.example.recruit.infra.llm.DeepSeekModelService;
+import com.example.recruit.infra.llm.JsonGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

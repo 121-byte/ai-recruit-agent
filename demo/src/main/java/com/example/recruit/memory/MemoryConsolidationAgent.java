@@ -2,8 +2,8 @@ package com.example.recruit.memory;
 
 import com.example.recruit.dal.entity.MemoryEntry;
 import com.example.recruit.dal.mapper.MemoryEntryMapper;
-import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.JsonGuard;
+import com.example.recruit.infra.llm.DeepSeekModelService;
+import com.example.recruit.infra.llm.JsonGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;

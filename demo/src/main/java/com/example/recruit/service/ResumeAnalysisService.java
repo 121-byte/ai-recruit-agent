@@ -2,10 +2,10 @@ package com.example.recruit.service;
 
 import com.example.recruit.dal.entity.Resume;
 import com.example.recruit.dal.mapper.ResumeMapper;
-import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.EmbeddingService;
-import com.example.recruit.llm.JsonGuard;
-import com.example.recruit.llm.QuickInfoExtractor;
+import com.example.recruit.infra.llm.DeepSeekModelService;
+import com.example.recruit.infra.retrieval.EmbeddingService;
+import com.example.recruit.infra.llm.JsonGuard;
+import com.example.recruit.infra.fileparser.QuickInfoExtractor;
 import com.example.recruit.service.analysis.ComparisonResult;
 import com.example.recruit.service.analysis.ImplicitInsights;
 import com.example.recruit.service.analysis.PotentialAssessment;

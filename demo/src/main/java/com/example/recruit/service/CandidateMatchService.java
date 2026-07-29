@@ -10,9 +10,9 @@ import com.example.recruit.dal.mapper.CandidateMatchMapper;
 import com.example.recruit.dal.mapper.InterviewMapper;
 import com.example.recruit.dal.mapper.JobProfileMapper;
 import com.example.recruit.dal.mapper.ResumeMapper;
-import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.EmbeddingService;
-import com.example.recruit.llm.JsonGuard;
+import com.example.recruit.infra.llm.DeepSeekModelService;
+import com.example.recruit.infra.retrieval.EmbeddingService;
+import com.example.recruit.infra.llm.JsonGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -52,7 +52,7 @@ public class CandidateMatchService {
     private final CandidateMatchMapper matchMapper;
     private final InterviewMapper interviewMapper;
     private final VectorSearchService vectorSearchService;
-    private final com.example.recruit.llm.RerankService rerankService;
+    private final com.example.recruit.infra.retrieval.RerankService rerankService;
     private final DeepSeekModelService deepSeekModelService;
     private final EmbeddingService embeddingService;
 
@@ -61,7 +61,7 @@ public class CandidateMatchService {
                                    CandidateMatchMapper matchMapper,
                                    InterviewMapper interviewMapper,
                                    VectorSearchService vectorSearchService,
-                                   com.example.recruit.llm.RerankService rerankService,
+                                   com.example.recruit.infra.retrieval.RerankService rerankService,
                                    DeepSeekModelService deepSeekModelService,
                                    EmbeddingService embeddingService) {
         this.jobMapper = jobMapper;

@@ -1,7 +1,7 @@
 package com.example.recruit.controller;
 
 import com.example.recruit.dal.entity.Resume;
-import com.example.recruit.llm.FileParserUtil;
+import com.example.recruit.infra.fileparser.FileParserUtil;
 import com.example.recruit.service.ResumeService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;

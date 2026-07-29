@@ -1,4 +1,4 @@
-package com.example.recruit.llm;
+package com.example.recruit.infra.observability;
 
 import com.example.recruit.config.AppProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;

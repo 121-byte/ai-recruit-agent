@@ -1,4 +1,4 @@
-package com.example.recruit.llm;
+package com.example.recruit.infra.llm;
 
 import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.Msg;

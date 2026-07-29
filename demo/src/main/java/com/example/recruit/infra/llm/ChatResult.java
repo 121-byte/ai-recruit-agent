@@ -1,4 +1,4 @@
-package com.example.recruit.llm;
+package com.example.recruit.infra.llm;
 
 /**
  * LLM 调用结果（带 token 使用量）。复刻自文档 §9.1 ChatResult。

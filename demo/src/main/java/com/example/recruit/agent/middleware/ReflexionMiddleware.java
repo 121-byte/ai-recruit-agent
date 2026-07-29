@@ -1,7 +1,7 @@
 package com.example.recruit.agent.middleware;
 
-import com.example.recruit.llm.DeepSeekModelService;
-import com.example.recruit.llm.JsonGuard;
+import com.example.recruit.infra.llm.DeepSeekModelService;
+import com.example.recruit.infra.llm.JsonGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;

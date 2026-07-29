@@ -1,4 +1,4 @@
-package com.example.recruit.llm;
+package com.example.recruit.infra.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

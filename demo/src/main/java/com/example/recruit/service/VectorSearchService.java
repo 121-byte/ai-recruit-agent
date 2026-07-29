@@ -5,7 +5,7 @@ import com.example.recruit.dal.entity.Resume;
 import com.example.recruit.dal.handler.FloatVectorTypeHandler;
 import com.example.recruit.dal.mapper.DocumentChunkMapper;
 import com.example.recruit.dal.mapper.ResumeMapper;
-import com.example.recruit.llm.EmbeddingService;
+import com.example.recruit.infra.retrieval.EmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
