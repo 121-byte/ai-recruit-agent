@@ -3,6 +3,8 @@ package com.example.recruit.config;
 import cn.dev33.satoken.exception.NotLoginException;
 import cn.dev33.satoken.exception.NotPermissionException;
 import cn.dev33.satoken.exception.NotRoleException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,6 +26,8 @@ import java.util.Map;
  */
 @RestControllerAdvice
 public class AuthExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthExceptionHandler.class);
 
     @ExceptionHandler(NotLoginException.class)
     public ResponseEntity<Map<String, Object>> handleNotLogin(NotLoginException e) {
@@ -54,6 +58,7 @@ public class AuthExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>> handleRuntime(RuntimeException e) {
+        log.error("unhandled runtime exception", e);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("code", 500);
         body.put("message", e.getMessage());
