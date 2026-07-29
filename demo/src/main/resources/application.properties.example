@@ -13,7 +13,8 @@ server.port=8888
 app.mock.enabled=true
 
 # ─── PostgreSQL (pgvector) ───
-spring.datasource.url=jdbc:postgresql://localhost:5432/airecruit
+# stringtype=unspecified: 兼容 MyBatis-Plus JacksonTypeHandler 写 jsonb 列 (避免 varchar→jsonb 报错)
+spring.datasource.url=jdbc:postgresql://localhost:5432/airecruit?stringtype=unspecified
 spring.datasource.username=postgres
 spring.datasource.password=YOUR_PG_PASSWORD
 spring.datasource.driver-class-name=org.postgresql.Driver
