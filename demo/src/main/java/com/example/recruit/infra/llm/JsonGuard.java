@@ -2,6 +2,7 @@ package com.example.recruit.infra.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Component;
 
 import java.util.regex.Pattern;
@@ -164,6 +165,39 @@ public final class JsonGuard {
             return null;
         }
         return node;
+    }
+
+    /**
+     * 解析 JSON, 合法返回 JsonNode, 失败返回含 {@code _error} 的错误节点 (不返回 null)。
+     * 用于 4+1 轮链式解析: 某轮失败不阻断, 由 {@link #hasError} 判定。
+     */
+    public static JsonNode parseAndValidate(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            ObjectNode err = MAPPER.createObjectNode();
+            err.put("_error", "empty response");
+            return err;
+        }
+        String cleaned = extractJson(rawJson);
+        if (cleaned == null) {
+            cleaned = rawJson;
+        }
+        try {
+            return MAPPER.readTree(cleaned);
+        } catch (Exception e) {
+            ObjectNode err = MAPPER.createObjectNode();
+            err.put("_error", "parse failed: " + truncate(e.getMessage(), 200));
+            return err;
+        }
+    }
+
+    /** 判断节点是否为 {@link #parseAndValidate(String)} 产生的错误节点。 */
+    public static boolean hasError(JsonNode node) {
+        return node != null && node.has("_error");
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return null;
+        return s.length() <= max ? s : s.substring(0, max) + "...";
     }
 
     // ═══════════════════ 非法内容检测 (§9.3 prompt-injection 防护) ═══════════════════

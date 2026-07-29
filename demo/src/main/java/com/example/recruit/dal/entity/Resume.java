@@ -23,9 +23,18 @@ public class Resume {
 
     private String candidateName;
 
+    // === 独立列 (schema.sql 增量迁移, 正则快速提取 + LLM 回写) ===
+    private String phone;
+    private String email;
+    private String education;
+    private String school;
+    private String major;
+    private Integer yearsExperience;
+    private String intendedPosition;
+
     private String rawText;
 
-    /** LLM 解析后的结构化数据: skills/work_experience/education/intended_position/work_years 等 */
+    /** LLM 4+1 轮完整分析结果 (structuredData/implicitInsights/riskAssessment/potentialAssessment/validation) */
     @TableField(typeHandler = JacksonTypeHandler.class)
     private JsonNode parsedJson;
 
@@ -35,7 +44,7 @@ public class Resume {
 
     private String[] riskTags;
 
-    private String status;   // pending/reviewed/rejected
+    private String status;   // pending/parsed/analyzed/reviewed/rejected
 
     private LocalDateTime createdAt;
 

@@ -135,7 +135,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
-import { listResumes, uploadResume, updateResume, deleteResume, analyzeResume as apiAnalyze, listIntendedPositions, listEducations } from '@/api'
+import { listResumes, uploadResume, updateResume, deleteResume, analyzeResume as apiAnalyze, getTaskStatus, listIntendedPositions, listEducations } from '@/api'
 import { useAuthStore } from '@/store/auth'
 import MainLayout from '@/components/MainLayout.vue'
 
@@ -317,14 +317,44 @@ function handleDelete(r) {
 async function analyzeResume(r) {
   const hide = message.loading('正在分析简历...', 0)
   try {
-    await apiAnalyze(r.id)
-    hide()
-    message.success('分析完成')
+    const res = await apiAnalyze(r.id)
+    // mock 同步返回结果对象 (无 taskId); real 异步返回 {taskId}
+    if (res && res.taskId) {
+      await pollTask(res.taskId, hide)
+    } else {
+      hide()
+      message.success('分析完成')
+    }
     load()
   } catch (e) {
     hide()
     message.error(e.message || '分析失败')
   }
+}
+
+// 轮询异步任务状态 (real 模式 4+1 轮解析耗时较长)
+async function pollTask(taskId, hide) {
+  const maxAttempts = 90
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, 2000))
+    try {
+      const st = await getTaskStatus(taskId)
+      if (st && st.status === 'SUCCESS') {
+        hide()
+        message.success(st.message || '分析完成')
+        return
+      }
+      if (st && st.status === 'FAILED') {
+        hide()
+        throw new Error(st.message || '任务失败')
+      }
+      // PENDING/RUNNING 继续轮询
+    } catch (e) {
+      // 轮询网络错误继续重试
+    }
+  }
+  hide()
+  throw new Error('分析任务超时')
 }
 
 // ─── 邀请面试（仅HR）───

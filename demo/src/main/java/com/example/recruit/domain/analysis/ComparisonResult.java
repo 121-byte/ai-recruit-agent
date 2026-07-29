@@ -2,53 +2,40 @@ package com.example.recruit.domain.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.Data;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Date;
 import java.util.List;
-import java.util.Map;
 
 /**
- * 候选人对比结果 POJO (复刻对齐清单 §1)。
- * 描述多名候选人的对比评分与综合结论。
+ * 候选人对比结果 (LLM 对比 JSON 透传)。
  */
-@Data
 public class ComparisonResult {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private List<String> candidates = new ArrayList<>();
-    private Map<String, Object> scores = new LinkedHashMap<>();
-    private String summary;
+    private List<Long> resumeIds;
+    private String comparisonResult;  // LLM 返回的对比 JSON 字符串
+    private Date comparedAt;
 
-    /** 从 JsonNode 反序列化。 */
-    public static ComparisonResult fromJson(JsonNode json) {
-        if (json == null || json.isMissingNode() || json.isNull()) {
-            return null;
-        }
-        try {
-            return MAPPER.convertValue(json, ComparisonResult.class);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /** 序列化为 JSON 字符串。 */
-    public String toJson() {
-        try {
-            return MAPPER.writeValueAsString(this);
-        } catch (Exception e) {
-            return "{}";
-        }
-    }
-
-    /** 转换为 JsonNode。 */
     public JsonNode toJsonNode() {
+        ObjectNode node = MAPPER.createObjectNode();
+        ArrayNode ids = node.putArray("resumeIds");
+        if (resumeIds != null) resumeIds.forEach(ids::add);
+        node.put("comparedAt", comparedAt != null ? comparedAt.toString() : "");
         try {
-            return MAPPER.convertValue(this, JsonNode.class);
+            node.set("comparison", MAPPER.readTree(comparisonResult));
         } catch (Exception e) {
-            return MAPPER.createObjectNode();
+            node.put("comparison", comparisonResult);
         }
+        return node;
     }
+
+    public List<Long> getResumeIds() { return resumeIds; }
+    public void setResumeIds(List<Long> resumeIds) { this.resumeIds = resumeIds; }
+    public String getComparisonResult() { return comparisonResult; }
+    public void setComparisonResult(String comparisonResult) { this.comparisonResult = comparisonResult; }
+    public Date getComparedAt() { return comparedAt; }
+    public void setComparedAt(Date comparedAt) { this.comparedAt = comparedAt; }
 }

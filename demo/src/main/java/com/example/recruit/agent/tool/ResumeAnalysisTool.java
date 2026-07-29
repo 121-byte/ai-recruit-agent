@@ -1,27 +1,21 @@
 package com.example.recruit.agent.tool;
 
-import com.example.recruit.service.ResumeAnalysisService;
+import com.example.recruit.domain.analysis.ComparisonResult;
 import com.example.recruit.domain.analysis.ResumeAnalysisResult;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.example.recruit.service.ResumeAnalysisService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * 简历分析工具 (复刻自文档 §8 ResumeAnalysisTool)。
- *
- * <p>薄封装：调用 {@link ResumeAnalysisService#analyzeFull(Long)}，结果 truncate。
- * Tool 不再注入 DeepSeek/Embedding/Mapper。
+ * 简历分析工具 (rawJson 摘要 + 对比)。
  */
 @Component
 public class ResumeAnalysisTool {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-            .enable(SerializationFeature.INDENT_OUTPUT);
 
     private final ResumeAnalysisService resumeAnalysisService;
 
@@ -31,30 +25,75 @@ public class ResumeAnalysisTool {
 
     @Tool(
             name = "analyzeResume",
-            description = "LLM 解析简历，提取结构化字段（姓名/意向岗位/工作年限/技能列表/工作经历/教育）并写回。",
+            description = "全量解析简历，提取结构化数据、隐性洞察、风险评估。简历ID可用 searchResumes 按姓名/学校等条件查找",
             concurrencySafe = false)
-    public Object analyzeResume(
-            @ToolParam(name = "resumeId", description = "简历 ID")
-            Long resumeId) {
-        Map<String, Object> out = new LinkedHashMap<>();
+    public Map<String, Object> analyzeResume(
+            @ToolParam(name = "resumeId", description = "简历ID") Long resumeId) {
         if (resumeId == null) {
-            out.put("error", "resumeId 不能为空");
-            return out;
+            return errorMap("简历ID不能为空");
         }
-        ResumeAnalysisResult result = resumeAnalysisService.analyzeFull(resumeId);
+        ResumeAnalysisResult result;
+        try {
+            result = resumeAnalysisService.analyzeFull(resumeId);
+        } catch (Exception e) {
+            return errorMap("简历解析失败: " + e.getMessage());
+        }
         if (result == null) {
-            out.put("error", "简历不存在或分析失败: " + resumeId);
-            return out;
+            return errorMap("简历 " + resumeId + " 不存在或解析失败");
         }
-        out.put("resume_id", resumeId);
+
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("resumeId", result.getResumeId());
+        summary.put("status", "analysis_complete");
+        summary.put("validation", truncate(result.getValidation(), 200));
         if (result.getStructuredData() != null) {
-            out.put("name", result.getStructuredData().getName());
-            out.put("parsed_json", result.getStructuredData().toJsonNode());
+            summary.put("structuredData", truncate(result.getStructuredData().getRawJson(), 500));
         }
-        out.put("implicit_insights", result.getImplicitInsights() == null ? null : result.getImplicitInsights().toJsonNode());
-        out.put("potential_assessment", result.getPotentialAssessment() == null ? null : result.getPotentialAssessment().toJsonNode());
-        out.put("risk_assessment", result.getRiskAssessment() == null ? null : result.getRiskAssessment().toJsonNode());
-        out.put("status", "reviewed");
-        return out;
+        if (result.getImplicitInsights() != null) {
+            summary.put("implicitInsights", truncate(result.getImplicitInsights().getRawJson(), 500));
+        }
+        if (result.getRiskAssessment() != null) {
+            summary.put("riskAssessment", truncate(result.getRiskAssessment().getRawJson(), 300));
+        }
+        if (result.getPotentialAssessment() != null) {
+            summary.put("potentialAssessment", truncate(result.getPotentialAssessment().getRawJson(), 300));
+        }
+        return summary;
+    }
+
+    @Tool(name = "compareResumes", description = "对比分析多份简历，返回对比结果摘要")
+    public Map<String, Object> compareResumes(
+            @ToolParam(name = "resumeIds", description = "简历ID列表") List<Long> resumeIds) {
+        if (resumeIds == null || resumeIds.isEmpty()) {
+            return errorMap("简历ID列表不能为空");
+        }
+        if (resumeIds.size() < 2) {
+            return errorMap("对比分析至少需要2份简历");
+        }
+        ComparisonResult result;
+        try {
+            result = resumeAnalysisService.compareResumes(resumeIds);
+        } catch (Exception e) {
+            return errorMap("简历对比失败: " + e.getMessage());
+        }
+        if (result == null) {
+            return errorMap("简历对比失败");
+        }
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("resumeIds", result.getResumeIds());
+        summary.put("status", "comparison_complete");
+        summary.put("comparison", truncate(result.getComparisonResult(), 800));
+        return summary;
+    }
+
+    private static Map<String, Object> errorMap(String message) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("error", message);
+        return m;
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return null;
+        return s.length() <= max ? s : s.substring(0, max) + "...(truncated)";
     }
 }

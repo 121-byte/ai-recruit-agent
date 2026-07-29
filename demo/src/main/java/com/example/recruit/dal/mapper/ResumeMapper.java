@@ -39,7 +39,7 @@ public interface ResumeMapper extends BaseMapper<Resume> {
     List<Resume> selectByIds(@Param("idsSql") String idsSql);
 
     /**
-     * 多条件搜索/筛选简历 (parsed_json->>intended_position 等 JSONB 字段)。
+     * 多条件搜索/筛选简历 (intended_position/school/major/education 走独立列)。
      */
     @Select("<script>" +
             "SELECT * FROM resume WHERE 1=1 " +
@@ -47,15 +47,15 @@ public interface ResumeMapper extends BaseMapper<Resume> {
             "  candidate_name ILIKE '%' || #{keyword} || '%'" +
             "  OR raw_text ILIKE '%' || #{keyword} || '%'" +
             "  OR parsed_json->>'skills' ILIKE '%' || #{keyword} || '%'" +
-            "  OR parsed_json->>'intended_position' ILIKE '%' || #{keyword} || '%'" +
-            "  OR parsed_json->>'school' ILIKE '%' || #{keyword} || '%'" +
-            "  OR parsed_json->>'major' ILIKE '%' || #{keyword} || '%'" +
+            "  OR intended_position ILIKE '%' || #{keyword} || '%'" +
+            "  OR school ILIKE '%' || #{keyword} || '%'" +
+            "  OR major ILIKE '%' || #{keyword} || '%'" +
             ")</if>" +
             "<if test='status != null and status != \"\"'>AND status = #{status} </if>" +
             "<if test='intendedPosition != null and intendedPosition != \"\"'>" +
-            "  AND parsed_json->>'intended_position' = #{intendedPosition} </if>" +
+            "  AND intended_position = #{intendedPosition} </if>" +
             "<if test='education != null and education != \"\"'>" +
-            "  AND parsed_json->>'education' = #{education} </if>" +
+            "  AND education = #{education} </if>" +
             "ORDER BY created_at DESC" +
             "</script>")
     List<Resume> search(@Param("keyword") String keyword,
@@ -64,15 +64,15 @@ public interface ResumeMapper extends BaseMapper<Resume> {
                         @Param("education") String education);
 
     /**
-     * 查询所有不重复的意向岗位 (parsed_json->>intended_position)。
+     * 查询所有不重复的意向岗位 (独立列 intended_position)。
      */
-    @Select("SELECT DISTINCT parsed_json->>'intended_position' AS pos FROM resume WHERE parsed_json->>'intended_position' IS NOT NULL AND parsed_json->>'intended_position' != '' ORDER BY pos")
+    @Select("SELECT DISTINCT intended_position AS pos FROM resume WHERE intended_position IS NOT NULL AND intended_position <> '' ORDER BY pos")
     List<String> listIntendedPositions();
 
     /**
-     * 查询所有不重复的学历 (parsed_json->>education)。
+     * 查询所有不重复的学历 (独立列 education)。
      */
-    @Select("SELECT DISTINCT parsed_json->>'education' AS edu FROM resume WHERE parsed_json->>'education' IS NOT NULL AND parsed_json->>'education' != '' ORDER BY edu")
+    @Select("SELECT DISTINCT education AS edu FROM resume WHERE education IS NOT NULL AND education <> '' ORDER BY edu")
     List<String> listEducations();
 
     /**
@@ -102,13 +102,13 @@ public interface ResumeMapper extends BaseMapper<Resume> {
                                   @Param("topK") int topK);
 
     /**
-     * 向量召回 + 方向预过滤: parsed_json->>'intended_position' 任一匹配过滤词。
+     * 向量召回 + 方向预过滤: intended_position 独立列任一匹配过滤词。
      * filtersCsv 为已消毒的 "'Java','后端'" 形式字符串 (调用方负责转义)。
      */
     @Select("<script>" +
             "SELECT * FROM resume WHERE embedding IS NOT NULL " +
             "<if test='filtersCsv != null and filtersCsv != \"\"'>" +
-            "AND (parsed_json->>'intended_position' IN (${filtersCsv}) " +
+            "AND (intended_position IN (${filtersCsv}) " +
             "OR raw_text ~* #{filtersRegex}) " +
             "</if>" +
             "ORDER BY embedding &lt;=&gt; #{queryVector}::vector LIMIT #{topK}" +

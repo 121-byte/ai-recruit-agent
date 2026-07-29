@@ -2,53 +2,37 @@ package com.example.recruit.domain.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.Data;
-
-import java.util.ArrayList;
-import java.util.List;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * 隐性特质洞察 POJO (复刻对齐清单 §1)。
- * 描述从简历中推断出的潜在领导力、学习敏锐度、文化契合度等隐性特质。
+ * 第2轮:隐性能力挖掘结果 (rawJson 透传)。
  */
-@Data
 public class ImplicitInsights {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private String leadershipPotential;
-    private String learningAgility;
-    private String cultureFit;
-    private String motivation;
-    private List<String> notes = new ArrayList<>();
+    private String rawJson;
 
-    /** 从 JsonNode 反序列化。 */
-    public static ImplicitInsights fromJson(JsonNode json) {
-        if (json == null || json.isMissingNode() || json.isNull()) {
-            return null;
-        }
-        try {
-            return MAPPER.convertValue(json, ImplicitInsights.class);
-        } catch (Exception e) {
-            return null;
-        }
+    public String getRawJson() { return rawJson; }
+    public void setRawJson(String rawJson) { this.rawJson = rawJson; }
+
+    public static ImplicitInsights fromJson(String json) {
+        ImplicitInsights data = new ImplicitInsights();
+        data.rawJson = json;
+        return data;
     }
 
-    /** 序列化为 JSON 字符串。 */
-    public String toJson() {
-        try {
-            return MAPPER.writeValueAsString(this);
-        } catch (Exception e) {
-            return "{}";
-        }
-    }
-
-    /** 转换为 JsonNode。 */
     public JsonNode toJsonNode() {
         try {
-            return MAPPER.convertValue(this, JsonNode.class);
+            return MAPPER.readTree(rawJson);
         } catch (Exception e) {
-            return MAPPER.createObjectNode();
+            ObjectNode node = MAPPER.createObjectNode();
+            node.put("raw", rawJson);
+            return node;
         }
+    }
+
+    public String toJson() {
+        return rawJson;
     }
 }

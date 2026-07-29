@@ -2,54 +2,37 @@ package com.example.recruit.domain.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.Data;
-
-import java.util.ArrayList;
-import java.util.List;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * 潜力评估 POJO (复刻对齐清单 §1)。
- * 描述候选人成长上限、领导力、创新力等潜力维度。
+ * 第4轮:潜力评估结果 (rawJson 透传)。
  */
-@Data
 public class PotentialAssessment {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private String growthCeiling;
-    private String leadership;
-    private String innovation;
-    private String adaptability;
-    private String summary;
-    private List<String> highlights = new ArrayList<>();
+    private String rawJson;
 
-    /** 从 JsonNode 反序列化。 */
-    public static PotentialAssessment fromJson(JsonNode json) {
-        if (json == null || json.isMissingNode() || json.isNull()) {
-            return null;
-        }
-        try {
-            return MAPPER.convertValue(json, PotentialAssessment.class);
-        } catch (Exception e) {
-            return null;
-        }
+    public String getRawJson() { return rawJson; }
+    public void setRawJson(String rawJson) { this.rawJson = rawJson; }
+
+    public static PotentialAssessment fromJson(String json) {
+        PotentialAssessment data = new PotentialAssessment();
+        data.rawJson = json;
+        return data;
     }
 
-    /** 序列化为 JSON 字符串。 */
-    public String toJson() {
-        try {
-            return MAPPER.writeValueAsString(this);
-        } catch (Exception e) {
-            return "{}";
-        }
-    }
-
-    /** 转换为 JsonNode。 */
     public JsonNode toJsonNode() {
         try {
-            return MAPPER.convertValue(this, JsonNode.class);
+            return MAPPER.readTree(rawJson);
         } catch (Exception e) {
-            return MAPPER.createObjectNode();
+            ObjectNode node = MAPPER.createObjectNode();
+            node.put("raw", rawJson);
+            return node;
         }
+    }
+
+    public String toJson() {
+        return rawJson;
     }
 }

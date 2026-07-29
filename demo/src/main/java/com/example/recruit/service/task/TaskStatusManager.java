@@ -1,37 +1,41 @@
 package com.example.recruit.service.task;
 
-import com.example.recruit.config.AppProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.Map;
 
 /**
- * 任务状态管理 (复刻自文档 §11.3 TaskStatusManager)。
- *
- * <p>使用 Redis 存储任务状态，支持前端轮询查询进度。
- * Mock 模式 (无 Redis) 降级为内存 Map。
+ * 任务状态管理 (内存 Map; 预留 Redis 降级)。
  */
 @Component
 public class TaskStatusManager {
 
-    private final AppProperties props;
-    private final ConcurrentHashMap<String, Map<String, Object>> store = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, TaskStatus> statusMap = new ConcurrentHashMap<>();
 
-    public TaskStatusManager(AppProperties props) {
-        this.props = props;
+    public void put(TaskStatus status) {
+        statusMap.put(status.getTaskId(), status);
     }
 
-    public void setStatus(String taskId, TaskStatus status, Object result) {
-        Map<String, Object> entry = new java.util.LinkedHashMap<>();
-        entry.put("taskId", taskId);
-        entry.put("status", status.name());
-        entry.put("result", result);
-        entry.put("updatedAt", System.currentTimeMillis());
-        store.put(taskId, entry);
+    public TaskStatus get(String taskId) {
+        return statusMap.get(taskId);
     }
 
-    public Map<String, Object> getStatus(String taskId) {
-        return store.getOrDefault(taskId, Map.of("taskId", taskId, "status", "UNKNOWN"));
+    public void updateStatus(String taskId, TaskStatus.Status status, String message) {
+        TaskStatus ts = statusMap.get(taskId);
+        if (ts != null) {
+            ts.setStatus(status);
+            ts.setMessage(message);
+        }
+    }
+
+    public void setResult(String taskId, Object result) {
+        TaskStatus ts = statusMap.get(taskId);
+        if (ts != null) {
+            ts.setResult(result);
+        }
+    }
+
+    public void remove(String taskId) {
+        statusMap.remove(taskId);
     }
 }

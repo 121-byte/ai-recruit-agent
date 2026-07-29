@@ -2,6 +2,7 @@ package com.example.recruit.controller;
 
 import com.example.recruit.dal.entity.Resume;
 import com.example.recruit.infra.fileparser.FileParserUtil;
+import com.example.recruit.infra.fileparser.QuickInfoExtractor;
 import com.example.recruit.service.ResumeService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -128,10 +129,18 @@ public class ResumeController {
         try {
             String fileName = file.getOriginalFilename();
             String rawText = fileParserUtil.parse(fileName, file.getBytes());
+            QuickInfoExtractor.Info info = QuickInfoExtractor.extract(rawText);
             Resume resume = new Resume();
-            resume.setCandidateName(candidateNameFromFile(fileName));
+            resume.setCandidateName(info.getName() != null ? info.getName() : candidateNameFromFile(fileName));
+            resume.setPhone(info.getPhone());
+            resume.setEmail(info.getEmail());
+            resume.setEducation(info.getEducation());
+            resume.setSchool(info.getSchool());
+            resume.setMajor(info.getMajor());
+            resume.setYearsExperience(info.getYearsExperience());
+            resume.setIntendedPosition(info.getIntendedPosition());
             resume.setRawText(rawText);
-            resume.setStatus("pending");
+            resume.setStatus("parsed");
             Resume created = resumeService.create(resume);
             resp.put("uploaded", true);
             resp.put("resume", created);

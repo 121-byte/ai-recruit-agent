@@ -8,16 +8,32 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ─────────────────── 3.1.1 resume 简历表 ───────────────────
 CREATE TABLE IF NOT EXISTS resume (
-    id              BIGSERIAL PRIMARY KEY,
-    candidate_name  VARCHAR(100),
-    raw_text        TEXT,
-    parsed_json     JSONB,
-    embedding       VECTOR(1024),
-    risk_tags       TEXT[],
-    status          VARCHAR(20) DEFAULT 'pending',   -- pending/reviewed/rejected
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id                  BIGSERIAL PRIMARY KEY,
+    candidate_name      VARCHAR(100),
+    phone               VARCHAR(20),
+    email               VARCHAR(100),
+    education           VARCHAR(50),
+    school              VARCHAR(100),
+    major               VARCHAR(100),
+    years_experience    INT,
+    intended_position   VARCHAR(100),
+    raw_text            TEXT,
+    parsed_json         JSONB,
+    embedding           VECTOR(1024),
+    risk_tags           TEXT[],
+    status              VARCHAR(20) DEFAULT 'pending',   -- pending/parsed/analyzed/reviewed/rejected
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- 增量迁移: 已建表时补 7 个独立列 (幂等), phone/email/education/school/major/years_experience/intended_position
+ALTER TABLE resume ADD COLUMN IF NOT EXISTS phone             VARCHAR(20);
+ALTER TABLE resume ADD COLUMN IF NOT EXISTS email             VARCHAR(100);
+ALTER TABLE resume ADD COLUMN IF NOT EXISTS education          VARCHAR(50);
+ALTER TABLE resume ADD COLUMN IF NOT EXISTS school             VARCHAR(100);
+ALTER TABLE resume ADD COLUMN IF NOT EXISTS major              VARCHAR(100);
+ALTER TABLE resume ADD COLUMN IF NOT EXISTS years_experience   INT;
+ALTER TABLE resume ADD COLUMN IF NOT EXISTS intended_position  VARCHAR(100);
+COMMENT ON COLUMN resume.status IS 'pending/parsed/analyzed/reviewed/rejected';
 CREATE INDEX IF NOT EXISTS idx_resume_status    ON resume (status);
 CREATE INDEX IF NOT EXISTS idx_resume_embedding ON resume USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_resume_name_trgm ON resume USING gin (candidate_name gin_trgm_ops);
