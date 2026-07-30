@@ -18,13 +18,17 @@ import java.util.stream.Collectors;
 /**
  * 简历文件解析工具 (复刻自文档 §9.5)。
  *
- * <p>支持 PDF / DOC / DOCX / TXT 等格式。<b>markitdown 优先，PDFBox/POI 兜底</b>：
- * <ol>
- *   <li>主：通过 ProcessBuilder 调用 Python markitdown 脚本 ({@code app.fileparser.script-path})，
- *       由 markitdown 统一将各类文档转为 Markdown 文本，质量最高</li>
- *   <li>兜底：markitdown 不可用（脚本缺失/python 缺失/非零退出/输出为空）时，
- *       按扩展名用 PDFBox / POI 纯 Java 解析</li>
- * </ol>
+ * <p>支持 PDF / DOC / DOCX / TXT 等格式。<b>按格式分流</b>：
+ * <ul>
+ *   <li><b>TXT</b>：直接 UTF-8 读取</li>
+ *   <li><b>PDF</b>：PDFBox 主路径（纯文本，对简历版式连贯性更好）；PDFBox 失败再回退 markitdown</li>
+ *   <li><b>DOCX/DOC/PPT/XLS/HTML 等有语义结构的文档</b>：markitdown 优先（转 Markdown 保留标题/列表/表格），
+ *       不可用时 POI 兜底</li>
+ * </ul>
+ *
+ * <p>分流原因：markitdown 对 PDF 会把版式硬转成 Markdown 表格，对简历多栏排版易产生碎片化管道符输出；
+ * 而 PDFBox 的 {@code PDFTextStripper} 给纯文本，对 LLM 结构化抽取更干净。
+ * Office 类文档则相反，markitdown 能保留真实语义结构，优于 POI 段落拼接。
  *
  * <p>失败时返回文件名提示，不抛异常，保证上传链路不中断。
  */
@@ -40,7 +44,9 @@ public class FileParserUtil {
     }
 
     /**
-     * 解析文件为纯文本 (markitdown 优先, PDFBox/POI 兜底)。
+     * 解析文件为纯文本 (按格式分流)。
+     *
+     * <p>TXT 直接读；PDF 走 PDFBox (失败回退 markitdown)；其余格式 markitdown 优先 (POI 兜底)。
      *
      * @param fileName 文件名（用于判断扩展名 + 临时文件后缀）
      * @param content  文件字节内容
@@ -56,17 +62,30 @@ public class FileParserUtil {
             return new String(content, StandardCharsets.UTF_8);
         }
 
-        // 主：markitdown
+        // PDF: PDFBox 主路径 (纯文本, 对简历版式连贯性更好); 失败回退 markitdown
+        if (lower.endsWith(".pdf")) {
+            try {
+                String pdfText = parsePdf(content);
+                if (pdfText != null && !pdfText.isBlank()) {
+                    return pdfText;
+                }
+                log.debug("PDFBox produced empty output for {}, fallback markitdown", fileName);
+            } catch (Exception e) {
+                log.warn("PDFBox parse {} failed, fallback markitdown: {}", fileName, e.getMessage());
+            }
+            Optional<String> md = parseWithMarkitdown(fileName, content);
+            if (md.isPresent() && !md.get().isBlank()) {
+                return md.get();
+            }
+            return "[解析失败: " + fileName + "]";
+        }
+
+        // 其余格式 (DOCX/DOC/PPT/XLS/HTML...): markitdown 优先 (保留语义结构), POI 兜底
         Optional<String> md = parseWithMarkitdown(fileName, content);
         if (md.isPresent() && !md.get().isBlank()) {
             return md.get();
         }
-
-        // 兜底：PDFBox / POI
         try {
-            if (lower.endsWith(".pdf")) {
-                return parsePdf(content);
-            }
             if (lower.endsWith(".docx")) {
                 return parseDocx(content);
             }

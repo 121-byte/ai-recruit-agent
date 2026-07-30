@@ -33,6 +33,12 @@ const routes = [
     meta: { requiresAuth: true, title: '简历管理' }
   },
   {
+    path: '/resumes/:id',
+    name: 'ResumeDetail',
+    component: () => import('@/features/resume/views/ResumeDetailView.vue'),
+    meta: { requiresAuth: true, title: '简历详情' }
+  },
+  {
     path: '/matches',
     name: 'Matches',
     component: () => import('@/features/match/views/MatchesView.vue'),

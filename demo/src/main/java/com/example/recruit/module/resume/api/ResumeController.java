@@ -74,6 +74,12 @@ public class ResumeController {
         return resumeService.listEducations();
     }
 
+    /** 固定岗位类别 (技术/人事/...), 用于意向岗位分类筛选。 */
+    @GetMapping("/position-categories")
+    public List<String> positionCategories() {
+        return resumeService.listPositionCategories();
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Resume> get(@PathVariable Long id) {
         return ResponseEntity.of(java.util.Optional.ofNullable(resumeService.getById(id)));

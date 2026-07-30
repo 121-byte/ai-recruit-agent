@@ -1,5 +1,6 @@
 package com.example.recruit.module.resume.application;
 
+import com.example.recruit.common.PositionCategories;
 import com.example.recruit.dal.entity.Resume;
 import com.example.recruit.dal.mapper.ResumeMapper;
 import com.example.recruit.infra.llm.DeepSeekModelService;
@@ -53,10 +54,10 @@ public class ResumeAnalysisService {
             throw new IllegalStateException("Resume raw text is empty: " + resumeId);
         }
 
-        // 第1轮: 结构化提取
+        // 第1轮: 结构化提取, 并用 LLM 结果覆盖 resume 独立列(正则导入值不准, 以 LLM 为准)
         log.info("Round 1: Structural extraction for resume {}", resumeId);
         StructuredData structured = round1StructuralExtraction(rawText, resumeId);
-        backfillResumeFromStructured(resume, structured);
+        overwriteResumeFromStructured(resume, structured);
 
         // 第2轮: 隐性挖掘
         log.info("Round 2: Implicit mining for resume {}", resumeId);
@@ -118,7 +119,9 @@ public class ResumeAnalysisService {
         String sys = """
                 你是一个专业的简历解析助手。请从以下简历文本中提取结构化信息，以JSON格式返回。
                 需要提取的字段:
-                - basicInfo: { name, phone, email, education(最高学历), school, major, graduationYear, intendedPosition(意向岗位/求职目标) }
+                - basicInfo: { name, phone, email, education(最高学历), school, major, graduationYear(毕业年份), workYears(工作年限,整数), intendedPosition(具体意向岗位/求职目标,如"Java工程师"), intendedPositionCategory(意向岗位所属类别) }
+                intendedPositionCategory 必须从以下固定类别中选一个返回，不要自行编造: """ + PositionCategories.CATEGORY_PROMPT + """
+                例如: Java工程师→技术, UI设计→设计, 招聘专员→人事, 销售代表→销售。
                 - skills: [ { name, level(熟练度1-5), years } ]
                 - workExperience: [ { company, title, period(时间段), responsibilities[], achievements[] } ]
                 - projects: [ { name, role, techStack[], description, highlights[] } ]
@@ -145,6 +148,7 @@ public class ResumeAnalysisService {
                 - careerProgression: 职业发展轨迹分析（是否持续成长、跳槽合理性）
                 - learningAbility: 学习能力体现（新技术采用、跨领域发展）
                 - communicationSkill: 沟通表达能力（基于简历描述细节）
+                输出格式（必须严格遵守）：每个维度统一为对象 {"score": 1-10整数, "reasoning": "依据文字"}；键名用上述英文键名, 值内文字用中文; 不要出现纯字符串值。
                 请直接返回JSON。""";
         String user = "简历结构化数据:\n" + structured.toJson() + "\n\n原始简历:\n" + rawText;
         String response = deepSeek.chatJson(sys, user);
@@ -166,6 +170,7 @@ public class ResumeAnalysisService {
                 - educationRisks: 教育背景风险（学历断层、学校真实性疑点）
                 - stabilityRisk: 稳定性风险评估（综合评分1-10）
                 - overallRiskLevel: 总体风险等级（LOW/MEDIUM/HIGH）
+                输出格式（必须严格遵守）：exaggerationRisks/jobHopping/skillInflation/educationRisks/stabilityRisk 统一为 {"level": "低/中/高", "reasoning": "依据"}; employmentGaps 为 {"gaps": ["时间段..."], "reasoning": "解释"}; overallRiskLevel 为 "LOW"/"MEDIUM"/"HIGH"; 键名用上述英文键名, 值内文字用中文。
                 请直接返回JSON。""";
         String user = "简历结构化数据:\n" + structured.toJson() + "\n\n原始简历:\n" + rawText;
         String response = deepSeek.chatJson(sys, user);
@@ -187,6 +192,7 @@ public class ResumeAnalysisService {
                 - recommendedRoles: 最适合的岗位类型（技术专家/架构师/技术管理/项目管理）
                 - developmentSuggestions: 发展建议（提升方向、培训建议）
                 - overallRating: 综合评级（S/A/B/C）
+                输出格式（必须严格遵守）：growthPotential/cultureFit 统一为 {"score": 1-10整数, "reasoning": "依据"}; careerStage 为文字字符串; recommendedRoles/developmentSuggestions 为字符串数组; overallRating 为 "S"/"A"/"B"/"C"; 键名用上述英文键名, 值内文字用中文。
                 请直接返回JSON。""";
         String user = "结构化数据:\n" + structured.toJson() + "\n\n隐性能力:\n" + implicit.toJson()
                 + "\n\n原始简历:\n" + rawText;
@@ -214,9 +220,13 @@ public class ResumeAnalysisService {
     }
 
     /**
-     * 将第1轮 basicInfo 回写到 resume 表, 只填充 null 字段, 不覆盖正则已提取的值。
+     * 用第1轮 LLM 结构化结果覆盖 resume 表的独立列。
+     *
+     * <p>导入时 QuickInfoExtractor 用正则已填过这些列, 但正则对多栏排版/无标签简历易出错
+     * (尤其姓名第一行兜底、意向岗位、年限推算), 故以 LLM 结构化结果覆盖更准的值。
+     * 安全护栏: LLM 未给出(空/null)的列保留正则原值, 不清空。
      */
-    private void backfillResumeFromStructured(Resume resume, StructuredData structured) {
+    private void overwriteResumeFromStructured(Resume resume, StructuredData structured) {
         try {
             JsonNode structuredNode = structured.toJsonNode();
             JsonNode basicInfo = structuredNode.get("basicInfo");
@@ -224,38 +234,87 @@ public class ResumeAnalysisService {
                 log.warn("No basicInfo found in structured data for resume {}", resume.getId());
                 return;
             }
-            int filled = 0;
-            if (resume.getPhone() == null && basicInfo.has("phone") && !basicInfo.get("phone").isNull()) {
-                resume.setPhone(basicInfo.get("phone").asText()); filled++;
+            int overwritten = 0;
+
+            String name = nonBlankText(basicInfo, "name");
+            if (name != null) { resume.setCandidateName(name); overwritten++; }
+
+            String phone = nonBlankText(basicInfo, "phone");
+            if (phone != null) { resume.setPhone(phone); overwritten++; }
+
+            String email = nonBlankText(basicInfo, "email");
+            if (email != null) { resume.setEmail(email); overwritten++; }
+
+            String education = nonBlankText(basicInfo, "education");
+            if (education != null) { resume.setEducation(education); overwritten++; }
+
+            String school = nonBlankText(basicInfo, "school");
+            if (school != null) { resume.setSchool(school); overwritten++; }
+
+            String major = nonBlankText(basicInfo, "major");
+            if (major != null) { resume.setMajor(major); overwritten++; }
+
+            String intendedPosition = nonBlankText(basicInfo, "intendedPosition");
+            // 意向岗位列存"类别"(技术/人事/...), 用于分类筛选; 具体岗位名保留在 structuredData.basicInfo.intendedPosition
+            String category = nonBlankText(basicInfo, "intendedPositionCategory");
+            if (category != null) {
+                resume.setIntendedPosition(PositionCategories.normalize(category));
+                overwritten++;
+            } else if (intendedPosition != null) {
+                // LLM 未给类别时, 兜底用具体岗位名, 至少不空
+                resume.setIntendedPosition(intendedPosition);
+                overwritten++;
             }
-            if (resume.getEmail() == null && basicInfo.has("email") && !basicInfo.get("email").isNull()) {
-                resume.setEmail(basicInfo.get("email").asText()); filled++;
+
+            // 工作年限: 优先 LLM 直接给的 workYears/work_years; 否则由 graduationYear 推算
+            Integer years = nonNullInt(basicInfo, "workYears", "work_years");
+            if (years == null) {
+                Integer gradYear = nonNullInt(basicInfo, "graduationYear");
+                if (gradYear != null) {
+                    int currentYear = java.time.Year.now().getValue();
+                    years = Math.max(0, currentYear - gradYear);
+                }
             }
-            if (resume.getEducation() == null && basicInfo.has("education") && !basicInfo.get("education").isNull()) {
-                resume.setEducation(basicInfo.get("education").asText()); filled++;
-            }
-            if (resume.getSchool() == null && basicInfo.has("school") && !basicInfo.get("school").isNull()) {
-                resume.setSchool(basicInfo.get("school").asText()); filled++;
-            }
-            if (resume.getMajor() == null && basicInfo.has("major") && !basicInfo.get("major").isNull()) {
-                resume.setMajor(basicInfo.get("major").asText()); filled++;
-            }
-            if (resume.getYearsExperience() == null
-                    && basicInfo.has("graduationYear") && !basicInfo.get("graduationYear").isNull()) {
-                int gradYear = basicInfo.get("graduationYear").asInt();
-                int currentYear = java.time.Year.now().getValue();
-                resume.setYearsExperience(Math.max(0, currentYear - gradYear)); filled++;
-            }
-            if (resume.getIntendedPosition() == null
-                    && basicInfo.has("intendedPosition") && !basicInfo.get("intendedPosition").isNull()) {
-                resume.setIntendedPosition(basicInfo.get("intendedPosition").asText()); filled++;
-            }
-            if (filled > 0) {
-                log.info("Backfilled {} fields from structured data for resume {}", filled, resume.getId());
+            if (years != null) { resume.setYearsExperience(years); overwritten++; }
+
+            if (overwritten > 0) {
+                log.info("Overwritten {} fields from structured data for resume {}", overwritten, resume.getId());
             }
         } catch (Exception e) {
-            log.warn("Failed to backfill resume from structured data: {}", e.getMessage());
+            log.warn("Failed to overwrite resume from structured data: {}", e.getMessage());
         }
+    }
+
+    /** 取 JsonNode 标量字段, 返回去空白后的非空文本, 否则 null。 */
+    private String nonBlankText(JsonNode parent, String field) {
+        if (parent == null) return null;
+        JsonNode n = parent.get(field);
+        if (n == null || n.isNull() || n.isMissingNode()) return null;
+        String s = n.isTextual() ? n.asText() : n.toString();
+        s = s.trim();
+        // 去掉 JSON 字符串外层引号
+        if (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) {
+            s = s.substring(1, s.length() - 1).trim();
+        }
+        return s.isEmpty() ? null : s;
+    }
+
+    /** 取多个候选字段中第一个可解析为整数的值, 否则 null。 */
+    private Integer nonNullInt(JsonNode parent, String... fields) {
+        for (String f : fields) {
+            if (parent == null) continue;
+            JsonNode n = parent.get(f);
+            if (n == null || n.isNull() || n.isMissingNode()) continue;
+            try {
+                if (n.isNumber()) return n.asInt();
+                String s = n.isTextual() ? n.asText().trim() : n.toString();
+                s = s.replaceAll("[^0-9-]", "");
+                if (s.isEmpty() || s.equals("-")) return null;
+                return Integer.parseInt(s);
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 
     public ComparisonResult compareResumes(List<Long> resumeIds) {

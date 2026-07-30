@@ -32,6 +32,9 @@ export function compareResumes(resumeIds) {
 export function listIntendedPositions() {
   return request.get('/resumes/intended-positions')
 }
+export function listPositionCategories() {
+  return request.get('/resumes/position-categories')
+}
 export function listEducations() {
   return request.get('/resumes/educations')
 }

@@ -10,7 +10,7 @@
           <option value="rejected">已拒绝</option>
         </select>
         <select v-model="filters.intendedPosition" class="filter-select" @change="load">
-          <option value="">全部意向岗位</option>
+          <option value="">全部岗位类别</option>
           <option v-for="p in positionOptions" :key="p" :value="p">{{ p }}</option>
         </select>
         <select v-model="filters.education" class="filter-select" @change="load">
@@ -58,7 +58,7 @@
 
           <!-- 技能 -->
           <div v-if="r.skills.length" class="resume-tags">
-            <span v-for="skill in r.skills.slice(0, 5)" :key="skill" class="resume-tag skill">{{ skill }}</span>
+            <span v-for="(skill, i) in r.skills.slice(0, 5)" :key="i" class="resume-tag skill">{{ skill }}</span>
             <span v-if="r.skills.length > 5" class="resume-tag skill">+{{ r.skills.length - 5 }}</span>
           </div>
 
@@ -73,7 +73,7 @@
 
           <!-- 操作按钮 -->
           <div class="resume-card-actions">
-            <button class="btn btn-secondary btn-sm" @click="openEdit(r)">编辑</button>
+            <button class="btn btn-primary btn-sm" @click="openDetail(r)">详情</button>            <button class="btn btn-secondary btn-sm" @click="openEdit(r)">编辑</button>
             <button class="btn btn-secondary btn-sm danger" @click="handleDelete(r)">删除</button>
             <template v-if="isHR">
               <button class="btn btn-secondary btn-sm" @click="analyzeResume(r)">分析</button>
@@ -93,8 +93,7 @@
     </a-modal>
 
     <!-- 编辑弹窗 -->
-    <a-modal v-model:open="showForm" title="编辑简历" @ok="handleSave" :confirm-loading="saving" ok-text="保存">
-      <a-form :model="form" layout="vertical">
+    <a-modal v-model:open="showForm" title="编辑简历" @ok="handleSave" :confirm-loading="saving" ok-text="保存">      <a-form :model="form" layout="vertical">
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="姓名">
@@ -135,7 +134,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
-import { listResumes, uploadResume, updateResume, deleteResume, analyzeResume as apiAnalyze, getTaskStatus, listIntendedPositions, listEducations } from '@/api'
+import { listResumes, uploadResume, updateResume, deleteResume, analyzeResume as apiAnalyze, getTaskStatus, listPositionCategories, listEducations } from '@/api'
 import { useAuthStore } from '@/store/auth'
 import MainLayout from '@/components/MainLayout.vue'
 
@@ -156,6 +155,11 @@ const showForm = ref(false)
 const saving = ref(false)
 const editing = ref(null)
 const form = reactive({ candidateName: '', status: 'pending', email: '', phone: '', rawText: '' })
+
+// ─── 简历详情 ───
+function openDetail(r) {
+  router.push(`/resumes/${r.id}`)
+}
 
 // ─── 搜索防抖 ───
 let searchTimer = null
@@ -185,7 +189,7 @@ async function load() {
 
 async function loadOptions() {
   try {
-    const [positions, edus] = await Promise.all([listIntendedPositions(), listEducations()])
+    const [positions, edus] = await Promise.all([listPositionCategories(), listEducations()])
     positionOptions.value = Array.isArray(positions) ? positions : []
     eduOptions.value = Array.isArray(edus) ? edus : []
   } catch { /* 静默 */ }
@@ -193,16 +197,20 @@ async function loadOptions() {
 
 function normalizeResume(resume) {
   const parsed = resume.parsedJson || {}
-  const skills = normalizeArray(parsed.skills || parsed.skill_tags || parsed.coreSkills)
+  // 分析结果为嵌套结构: parsedJson.structuredData.{skills,basicInfo,...}
+  // 编辑/导入可能是扁平结构, 两者都兼容
+  const sd = parsed.structuredData || {}
+  const basic = sd.basicInfo || {}
+  const skills = normalizeArray(sd.skills || parsed.skills || parsed.skill_tags || parsed.coreSkills)
   return {
     ...resume,
-    name: resume.candidateName || resume.name || parsed.name || parsed.candidate_name || '未命名',
-    email: resume.email || parsed.email || '',
-    phone: resume.phone || parsed.phone || parsed.mobile || '',
-    title: resume.title || parsed.intended_position || parsed.position || parsed.target_position || '应聘简历',
-    intendedPosition: parsed.intended_position || parsed.target_position || '',
-    education: parsed.education || parsed.highest_education || '',
-    workYears: parsed.work_years || parsed.workYears || null,
+    name: resume.candidateName || resume.name || basic.name || parsed.name || parsed.candidate_name || '未命名',
+    email: resume.email || basic.email || parsed.email || '',
+    phone: resume.phone || basic.phone || parsed.phone || parsed.mobile || '',
+    title: resume.title || basic.intendedPosition || basic.intended_position || parsed.intended_position || parsed.position || '应聘简历',
+    intendedPosition: basic.intendedPosition || basic.intended_position || parsed.intended_position || parsed.target_position || resume.intendedPosition || '',
+    education: resume.education || basic.education || parsed.education || parsed.highest_education || '',
+    workYears: resume.yearsExperience ?? basic.work_years ?? basic.workYears ?? parsed.work_years ?? parsed.workYears ?? null,
     skills,
     matchScore: resume.matchScore ?? resume.score ?? null,
     status: (resume.status || 'pending').toLowerCase(),
@@ -210,7 +218,17 @@ function normalizeResume(resume) {
 }
 
 function normalizeArray(value) {
-  if (Array.isArray(value)) return value.map(String).filter(Boolean)
+  if (Array.isArray(value)) {
+    return value.map((el) => {
+      if (el == null) return null
+      if (typeof el === 'object') {
+        // 技能/经历等可能是对象 {name, level, years}, 取名称展示
+        return el.name || el.title || el.skill || null
+      }
+      const s = String(el).trim()
+      return s || null
+    }).filter(Boolean)
+  }
   if (typeof value === 'string') {
     return value.split(/[,，、\s]+/).map(s => s.trim()).filter(Boolean)
   }

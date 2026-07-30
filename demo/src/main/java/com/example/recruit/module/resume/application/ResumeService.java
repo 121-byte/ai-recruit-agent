@@ -163,6 +163,11 @@ public class ResumeService {
         }
     }
 
+    /** 固定岗位类别集 (技术/人事/...), 供意向岗位分类筛选下拉。 */
+    public List<String> listPositionCategories() {
+        return com.example.recruit.common.PositionCategories.CATEGORIES;
+    }
+
     /**
      * 多参数可选通用搜索 (复刻自文档 §8.2 ResumeSearchTool)。
      * 所有参数可选，按需组合 WHERE；parsed_json 为 JSONB，like 在 PostgreSQL 下生效。
