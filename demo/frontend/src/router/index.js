@@ -27,6 +27,12 @@ const routes = [
     meta: { requiresAuth: true, title: '岗位管理' }
   },
   {
+    path: '/jobs/:id',
+    name: 'JobDetail',
+    component: () => import('@/features/job/views/JobDetailView.vue'),
+    meta: { requiresAuth: true, title: '岗位详情' }
+  },
+  {
     path: '/resumes',
     name: 'Resumes',
     component: () => import('@/features/resume/views/ResumesView.vue'),

@@ -66,6 +66,8 @@
               </td>
               <td>{{ formatDate(job.createdAt) }}</td>
               <td>
+                <span class="action-link" @click="openDetail(job)">详情</span>
+                <span class="action-sep">·</span>
                 <span class="action-link" @click="openEdit(job)">编辑</span>
                 <span class="action-sep">·</span>
                 <span class="action-link danger" @click="handleDelete(job)">删除</span>
@@ -307,6 +309,10 @@ function openCreate() {
   resetForm()
   form.status = 'active'
   showForm.value = true
+}
+
+function openDetail(job) {
+  router.push(`/jobs/${job.id}`)
 }
 
 function openEdit(job) {
