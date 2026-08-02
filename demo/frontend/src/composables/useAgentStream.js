@@ -74,38 +74,135 @@ export function useAgentStream() {
 
   // ===== 工具调用处理 =====
   function handleToolCall(data, assistantMsg) {
-    const call = {
-      id: data.id || data.callId || `call-${Date.now()}`,
+    const callId = data.toolCallId || data.id || data.callId || `${data.name || data.tool || 'tool'}-${Date.now()}`
+    let call = activeToolCalls.value.find((c) => c.id === callId)
+    if (!call && assistantMsg && Array.isArray(assistantMsg.toolCalls)) {
+      call = assistantMsg.toolCalls.find((c) => c.id === callId)
+    }
+
+    if (call) {
+      call.name = data.name || data.tool || call.name
+      if (data.args || data.arguments) {
+        call.args = data.args || data.arguments
+      }
+      if (data.delta) {
+        call.argsText = (call.argsText || '') + data.delta
+        call.args = call.argsText
+      }
+      if (data.finished) {
+        call.callFinished = true
+      }
+      return
+    }
+
+    const newCall = {
+      id: callId,
       name: data.name || data.tool || '',
       args: data.args || data.arguments || {},
       result: null,
-      status: 'running'
+      status: 'running',
+      callFinished: !!data.finished
     }
-    activeToolCalls.value.push(call)
+    if (data.delta) {
+      newCall.argsText = data.delta
+      newCall.args = data.delta
+    }
+    activeToolCalls.value.push(newCall)
     if (assistantMsg && Array.isArray(assistantMsg.toolCalls)) {
-      assistantMsg.toolCalls.push(call)
+      assistantMsg.toolCalls.push(newCall)
     }
   }
 
   function handleToolResult(data, assistantMsg) {
-    const callId = data.id || data.callId
-    const call = activeToolCalls.value.find((c) => c.id === callId)
+    const callId = data.toolCallId || data.id || data.callId
+    const findByIdOrName = (list) => {
+      if (!Array.isArray(list)) return null
+      return list.find((c) => callId && c.id === callId) ||
+        [...list].reverse().find((c) => c.name && c.name === (data.name || data.tool))
+    }
+    const call = findByIdOrName(activeToolCalls.value)
     if (call) {
-      call.result = data.result || data.output
-      call.status = 'done'
-      // 完成后移出 active 列表
-      activeToolCalls.value = activeToolCalls.value.filter((c) => c.id !== callId)
+      const chunk = data.result ?? data.output
+      if (chunk !== undefined && chunk !== null) {
+        call.result = call.result == null ? chunk : `${call.result}${chunk}`
+      }
+      if (data.finished || data.state) {
+        call.status = data.state && data.state !== 'SUCCESS' ? 'error' : 'done'
+        activeToolCalls.value = activeToolCalls.value.filter((c) => c.id !== call.id)
+      }
     }
     if (assistantMsg && Array.isArray(assistantMsg.toolCalls)) {
-      const tc = assistantMsg.toolCalls.find((c) => c.id === callId)
+      const tc = findByIdOrName(assistantMsg.toolCalls)
       if (tc) {
-        tc.result = data.result || data.output
-        tc.status = 'done'
+        const chunk = data.result ?? data.output
+        if (chunk !== undefined && chunk !== null) {
+          tc.result = tc.result == null ? chunk : `${tc.result}${chunk}`
+        }
+        if (data.finished || data.state) {
+          tc.status = data.state && data.state !== 'SUCCESS' ? 'error' : 'done'
+        }
       }
     }
   }
 
   // ===== 事件状态机（§12.3） =====
+  function normalizePlan(payload) {
+    let raw = payload?.plan ?? payload?.steps ?? payload
+    if (typeof raw === 'string') {
+      try {
+        raw = JSON.parse(raw)
+      } catch (e) {
+        raw = []
+      }
+    }
+    if (raw && !Array.isArray(raw) && Array.isArray(raw.steps)) {
+      raw = raw.steps
+    }
+    if (!Array.isArray(raw)) {
+      raw = []
+    }
+    return raw.map((step, idx) => ({
+      id: step.id || step.stepId || `step-${idx + 1}`,
+      agent: step.agent || '',
+      task: step.task || step.name || '',
+      description: step.description || step.task || step.name || '',
+      status: step.status || 'pending',
+      ...step
+    }))
+  }
+
+  function normalizeStepStatus(status) {
+    const value = String(status || '').toLowerCase()
+    if (['success', 'done', 'completed', 'complete'].includes(value)) return 'done'
+    if (['failed', 'failure', 'error'].includes(value)) return 'error'
+    if (['running', 'in_progress', 'processing'].includes(value)) return 'running'
+    return value || 'pending'
+  }
+
+  function handleTaskUpdate(data, assistantMsg) {
+    const plan = Array.isArray(assistantMsg.plan) ? assistantMsg.plan : []
+    const stepId = data.id || data.stepId
+    const idx = plan.findIndex((step) =>
+      (stepId && step.id === stepId) ||
+      (data.agent && data.task && step.agent === data.agent && step.task === data.task)
+    )
+    const patch = {
+      id: stepId || `${data.agent || 'agent'}-${data.task || Date.now()}`,
+      agent: data.agent || '',
+      task: data.task || '',
+      description: data.description || data.task || data.agent || '',
+      status: normalizeStepStatus(data.status || data.state),
+      error: data.error || ''
+    }
+    if (idx >= 0) {
+      plan[idx] = { ...plan[idx], ...patch }
+    } else {
+      plan.push(patch)
+    }
+    assistantMsg.plan = [...plan]
+    currentPlan.value = assistantMsg.plan
+  }
+
   function handleEvent(eventType, data, assistantMsg) {
     switch (eventType) {
       case 'session':
@@ -136,8 +233,11 @@ export function useAgentStream() {
         handleToolResult(data, assistantMsg)
         break
       case 'plan':
-        currentPlan.value = data.plan || data
+        currentPlan.value = normalizePlan(data)
         assistantMsg.plan = currentPlan.value
+        break
+      case 'task_update':
+        handleTaskUpdate(data, assistantMsg)
         break
       case 'hitl':
         pendingHitl.value = data

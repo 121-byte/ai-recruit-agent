@@ -75,6 +75,32 @@ public class ResumeController {
     }
 
     /** 固定岗位类别 (技术/人事/...), 用于意向岗位分类筛选。 */
+    @GetMapping("/debug/agent-search")
+    public Map<String, Object> debugAgentSearch(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String school,
+            @RequestParam(required = false) String education,
+            @RequestParam(required = false) String major,
+            @RequestParam(required = false) String intendedPosition,
+            @RequestParam(required = false) Integer minExperience) {
+        List<Resume> resumes = resumeService.search(name, school, education, major, intendedPosition, minExperience);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        Map<String, Object> query = new LinkedHashMap<>();
+        query.put("name", valueOrNull(name));
+        query.put("school", valueOrNull(school));
+        query.put("education", valueOrNull(education));
+        query.put("major", valueOrNull(major));
+        query.put("intendedPosition", valueOrNull(intendedPosition));
+        query.put("minExperience", minExperience);
+        resp.put("query", query);
+        resp.put("count", resumes.size());
+        resp.put("found", !resumes.isEmpty());
+        resp.put("results", resumes.stream()
+                .map(this::toDebugResume)
+                .toList());
+        return resp;
+    }
+
     @GetMapping("/position-categories")
     public List<String> positionCategories() {
         return resumeService.listPositionCategories();
@@ -166,5 +192,34 @@ public class ResumeController {
             name = name.substring(0, dot);
         }
         return name.replaceAll("[_\\-]+", " ").trim();
+    }
+
+    private Map<String, Object> toDebugResume(Resume resume) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", resume.getId());
+        item.put("candidateName", resume.getCandidateName());
+        item.put("status", resume.getStatus());
+        item.put("school", resume.getSchool());
+        item.put("education", resume.getEducation());
+        item.put("major", resume.getMajor());
+        item.put("yearsExperience", resume.getYearsExperience());
+        item.put("intendedPosition", resume.getIntendedPosition());
+        item.put("rawTextPreview", preview(resume.getRawText(), 160));
+        return item;
+    }
+
+    private static String preview(String value, int limit) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String compact = value.replaceAll("\\s+", " ").trim();
+        return compact.length() <= limit ? compact : compact.substring(0, limit);
+    }
+
+    private static Object valueOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

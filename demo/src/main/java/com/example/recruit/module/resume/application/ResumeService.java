@@ -175,12 +175,22 @@ public class ResumeService {
     public List<Resume> search(String name, String school, String education,
                                  String major, String intendedPosition, Integer minExperience) {
         try {
+            String nameKeyword = trimToNull(name);
+            String schoolKeyword = trimToNull(school);
+            String educationKeyword = trimToNull(education);
+            String majorKeyword = trimToNull(major);
+            String positionKeyword = trimToNull(intendedPosition);
+
             LambdaQueryWrapper<Resume> wrapper = new LambdaQueryWrapper<Resume>()
-                    .eq(name != null && !name.isBlank(), Resume::getCandidateName, name)
-                    .like(school != null && !school.isBlank(), Resume::getParsedJson, school)
-                    .like(education != null && !education.isBlank(), Resume::getParsedJson, education)
-                    .like(major != null && !major.isBlank(), Resume::getParsedJson, major)
-                    .like(intendedPosition != null && !intendedPosition.isBlank(), Resume::getParsedJson, intendedPosition)
+                    .and(nameKeyword != null, w -> w
+                            .like(Resume::getCandidateName, nameKeyword)
+                            .or()
+                            .like(Resume::getRawText, nameKeyword))
+                    .like(schoolKeyword != null, Resume::getSchool, schoolKeyword)
+                    .like(educationKeyword != null, Resume::getEducation, educationKeyword)
+                    .like(majorKeyword != null, Resume::getMajor, majorKeyword)
+                    .like(positionKeyword != null, Resume::getIntendedPosition, positionKeyword)
+                    .ge(minExperience != null, Resume::getYearsExperience, minExperience)
                     .orderByDesc(Resume::getCreatedAt)
                     .last("LIMIT 20");
             return resumeMapper.selectList(wrapper);
@@ -188,5 +198,13 @@ public class ResumeService {
             log.warn("search resume failed: {}", e.getMessage());
             return List.of();
         }
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

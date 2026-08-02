@@ -13,8 +13,6 @@ import com.example.recruit.infra.llm.MockChatModel;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
-import io.agentscope.harness.agent.memory.MemoryConfig;
-import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.agentscope.extensions.model.openai.formatter.DeepSeekFormatter;
 import jakarta.annotation.PostConstruct;
@@ -23,16 +21,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Supervisor Agent (复刻自文档 §4.6 SupervisorAgentService)。
- *
- * <p>Supervisor 本身不直接操作业务工具，而是将 4 个专家 Agent 作为工具调用
- * (Agent-as-Tool 模式)。
- *
- * <p>配置差异 (与 ReAct Agent 对比)：
- * <ul>
- *   <li>{@code maxIters(5)} — Supervisor 需多轮调度，迭代上限更高</li>
- *   <li>Toolkit 注册的是 Agent-as-Tool 包装器 (JobAnalystAgentTool 等)</li>
- *   <li>sysPrompt 包含专家调用顺序与上下文传递策略</li>
+ * Supervisor Agent (澶嶅埢鑷枃妗?搂4.6 SupervisorAgentService)銆? *
+ * <p>Supervisor 鏈韩涓嶇洿鎺ユ搷浣滀笟鍔″伐鍏凤紝鑰屾槸灏?4 涓笓瀹?Agent 浣滀负宸ュ叿璋冪敤
+ * (Agent-as-Tool 妯″紡)銆? *
+ * <p>閰嶇疆宸紓 (涓?ReAct Agent 瀵规瘮)锛? * <ul>
+ *   <li>{@code maxIters(5)} 鈥?Supervisor 闇€澶氳疆璋冨害锛岃凯浠ｄ笂闄愭洿楂?/li>
+ *   <li>Toolkit 娉ㄥ唽鐨勬槸 Agent-as-Tool 鍖呰鍣?(JobAnalystAgentTool 绛?</li>
+ *   <li>sysPrompt 鍖呭惈涓撳璋冪敤椤哄簭涓庝笂涓嬫枃浼犻€掔瓥鐣?/li>
  * </ul>
  */
 @Service
@@ -75,11 +70,11 @@ public class SupervisorAgentService {
     @PostConstruct
     void init() {
         Toolkit toolkit = new Toolkit();
-        toolkit.registerTool(jobAnalystAgentTool);        // 岗位分析专家
-        toolkit.registerTool(matchAgentTool);             // 候选人匹配专家
-        toolkit.registerTool(interviewSpecialistTool);    // 面试专家
-        toolkit.registerTool(outreachSpecialistTool);     // 触达专家
-        toolkit.registerTool(webSearchTool);              // 联网搜索
+        ToolRegistrationSupport.register(toolkit, jobAnalystAgentTool);        // 宀椾綅鍒嗘瀽涓撳
+        ToolRegistrationSupport.register(toolkit, matchAgentTool);             // 鍊欓€変汉鍖归厤涓撳
+        ToolRegistrationSupport.register(toolkit, interviewSpecialistTool);    // 闈㈣瘯涓撳
+        ToolRegistrationSupport.register(toolkit, outreachSpecialistTool);     // 瑙﹁揪涓撳
+        ToolRegistrationSupport.register(toolkit, webSearchTool);              // 鑱旂綉鎼滅储
 
         Model primary = buildModel();
         Model fallback = buildModel();
@@ -91,10 +86,8 @@ public class SupervisorAgentService {
                 .fallbackModel(fallback)
                 .maxRetries(3)
                 .toolkit(toolkit)
-                .memory(MemoryConfig.defaults())
                 .permissionContext(permissionService.getContext())
-                .maxIters(5)   // Supervisor 需多轮调度
-                .compaction(CompactionConfig.builder().triggerMessages(20).build())
+                .maxIters(5)   // Supervisor 闇€澶氳疆璋冨害
                 .middleware(guardrail)
                 .middleware(reflexion)
                 .disableFilesystemTools()
@@ -103,6 +96,9 @@ public class SupervisorAgentService {
                 .disableDynamicSkills()
                 .disableDefaultWorkspaceSkills()
                 .disableWorkspaceContext()
+                .disableSessionPersistence()
+                .disableCompaction()
+                .disableMemoryHooks()
                 .disableMemoryTools()
                 .build();
 
@@ -136,20 +132,14 @@ public class SupervisorAgentService {
         return supervisorAgent;
     }
 
-    // ─────────────────── Supervisor sysPrompt (文档 §4.6) ───────────────────
+    // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Supervisor sysPrompt (鏂囨。 搂4.6) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
     private static final String SUPERVISOR_PROMPT = """
-            你是招聘协调员。根据HR的需求，调度专家Agent完成全流程招聘。
-            ## 专家Agent及调用顺序
-            1. jobAnalyst — 分析JD、提取技能矩阵
-            2. matchAgent — 匹配候选人
-            3. interviewSpecialist — 生成面试题或启动AI初面
-            4. outreachSpecialist — 生成邀约消息
-            ## 工作原则
-            - 按招聘流程顺序调度：岗位分析 → 候选人匹配 → 面试/触达
-            - 将前一个专家的输出结果作为上下文写入下一个专家的instruction
-            - 用户只需单一环节时直接调用对应专家，无需全流程
-            - 信息不足时主动探索，而非直接拒绝
-            - 完成后用简洁中文向HR汇报各环节结果
-            """;
+            浣犳槸鎷涜仒鍗忚皟鍛樸€傛牴鎹瓾R鐨勯渶姹傦紝璋冨害涓撳Agent瀹屾垚鍏ㄦ祦绋嬫嫑鑱樸€?            ## 涓撳Agent鍙婅皟鐢ㄩ『搴?            1. jobAnalyst 鈥?鍒嗘瀽JD銆佹彁鍙栨妧鑳界煩闃?            2. matchAgent 鈥?鍖归厤鍊欓€変汉
+            3. interviewSpecialist 鈥?鐢熸垚闈㈣瘯棰樻垨鍚姩AI鍒濋潰
+            4. outreachSpecialist 鈥?鐢熸垚閭€绾︽秷鎭?            ## 宸ヤ綔鍘熷垯
+            - 鎸夋嫑鑱樻祦绋嬮『搴忚皟搴︼細宀椾綅鍒嗘瀽 鈫?鍊欓€変汉鍖归厤 鈫?闈㈣瘯/瑙﹁揪
+            - 灏嗗墠涓€涓笓瀹剁殑杈撳嚭缁撴灉浣滀负涓婁笅鏂囧啓鍏ヤ笅涓€涓笓瀹剁殑instruction
+            - 鐢ㄦ埛鍙渶鍗曚竴鐜妭鏃剁洿鎺ヨ皟鐢ㄥ搴斾笓瀹讹紝鏃犻渶鍏ㄦ祦绋?            - 淇℃伅涓嶈冻鏃朵富鍔ㄦ帰绱紝鑰岄潪鐩存帴鎷掔粷
+            - 瀹屾垚鍚庣敤绠€娲佷腑鏂囧悜HR姹囨姤鍚勭幆鑺傜粨鏋?            """;
 }

@@ -113,7 +113,7 @@
               <div v-if="msg.content" class="chat-msg-bubble markdown-body" v-html="renderMarkdown(msg.content)"></div>
               <ToolBlock
                 v-for="(tc, i) in msg.toolCalls || []"
-                :key="i"
+                :key="tc.id || i"
                 :name="tc.name"
                 :args="tc.args"
                 :result="tc.result"

@@ -143,17 +143,20 @@ public class AgentEventSseMapper {
         if (event instanceof ToolResultTextDeltaEvent e) {
             return format("tool_result", mapOf(
                     "name", e.getToolCallName(),
+                    "toolCallId", e.getToolCallId(),
                     "result", maskPii(e.getDelta())));
         }
         if (event instanceof ToolResultDataDeltaEvent e) {
             Object data = e.getData();
             return format("tool_result", mapOf(
                     "name", e.getToolCallName(),
+                    "toolCallId", e.getToolCallId(),
                     "result", data == null ? null : maskPii(String.valueOf(data))));
         }
         if (event instanceof ToolResultEndEvent e) {
             return format("tool_result", mapOf(
                     "name", e.getToolCallName(),
+                    "toolCallId", e.getToolCallId(),
                     "state", e.getState() == null ? null : e.getState().name(),
                     "finished", true));
         }

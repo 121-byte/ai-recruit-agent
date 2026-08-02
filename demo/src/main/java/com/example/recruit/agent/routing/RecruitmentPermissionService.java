@@ -22,28 +22,29 @@ import org.springframework.stereotype.Component;
 @Component
 public class RecruitmentPermissionService {
 
-    private static final String CATEGORY = "recruit";
     private static final String SOURCE = "recruit";
 
     private static final PermissionContextState CONTEXT = PermissionContextState.builder()
             .mode(PermissionMode.DEFAULT)
             // JobAnalysisTool 所有方法 ALLOW
-            .addAllowRule(CATEGORY, new PermissionRule("listJobs", "", PermissionBehavior.ALLOW, SOURCE))
-            .addAllowRule(CATEGORY, new PermissionRule("analyzeJob", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("listJobs", new PermissionRule("listJobs", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("analyzeJob", new PermissionRule("analyzeJob", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("refreshJobAnalysis", new PermissionRule("refreshJobAnalysis", "", PermissionBehavior.ALLOW, SOURCE))
             // CandidateMatchingTool: matchCandidates ASK (高危, 需 HR 确认)
-            .addAskRule(CATEGORY, new PermissionRule("matchCandidates", "", PermissionBehavior.ASK, SOURCE))
+            .addAskRule("matchCandidates", new PermissionRule("matchCandidates", "", PermissionBehavior.ASK, SOURCE))
             // InterviewQuestionTool: generateQuestions ASK / getQuestions ALLOW
-            .addAskRule(CATEGORY, new PermissionRule("generateQuestions", "", PermissionBehavior.ASK, SOURCE))
-            .addAllowRule(CATEGORY, new PermissionRule("getQuestions", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAskRule("generateQuestions", new PermissionRule("generateQuestions", "", PermissionBehavior.ASK, SOURCE))
+            .addAllowRule("getQuestions", new PermissionRule("getQuestions", "", PermissionBehavior.ALLOW, SOURCE))
             // 其余工具 (searchResumes/analyzeResume/webSearch/generateOutreach/startInterview 等) 默认 ALLOW
-            .addAllowRule(CATEGORY, new PermissionRule("searchResumes", "", PermissionBehavior.ALLOW, SOURCE))
-            .addAllowRule(CATEGORY, new PermissionRule("analyzeResume", "", PermissionBehavior.ALLOW, SOURCE))
-            .addAllowRule(CATEGORY, new PermissionRule("webSearch", "", PermissionBehavior.ALLOW, SOURCE))
-            .addAllowRule(CATEGORY, new PermissionRule("generateOutreach", "", PermissionBehavior.ALLOW, SOURCE))
-            .addAllowRule(CATEGORY, new PermissionRule("generateBatchOutreach", "", PermissionBehavior.ALLOW, SOURCE))
-            .addAllowRule(CATEGORY, new PermissionRule("startInterview", "", PermissionBehavior.ALLOW, SOURCE))
-            .addAllowRule(CATEGORY, new PermissionRule("evaluateAnswer", "", PermissionBehavior.ALLOW, SOURCE))
-            .addAllowRule(CATEGORY, new PermissionRule("generateSummary", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("searchResumes", new PermissionRule("searchResumes", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("analyzeResume", new PermissionRule("analyzeResume", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("refreshResumeAnalysis", new PermissionRule("refreshResumeAnalysis", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("webSearch", new PermissionRule("webSearch", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("generateOutreach", new PermissionRule("generateOutreach", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("generateBatchOutreach", new PermissionRule("generateBatchOutreach", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("startInterview", new PermissionRule("startInterview", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("evaluateAnswer", new PermissionRule("evaluateAnswer", "", PermissionBehavior.ALLOW, SOURCE))
+            .addAllowRule("generateSummary", new PermissionRule("generateSummary", "", PermissionBehavior.ALLOW, SOURCE))
             .build();
 
     /**
