@@ -17,15 +17,11 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 /**
- * Rerank 服务 (复刻自文档 §6.2，按阿里云百炼原生 rerank 端点对接)。
+ * Rerank service for recruitment matching.
  *
- * <p>阿里云百炼 {@code qwen3-vl-rerank} 模型做交叉重排。
- * 注意：百炼 rerank 不在 OpenAI 兼容模式 (/rerank 返回 404)，而用原生端点
- * {@code /api/v1/services/rerank/text-rerank/text-rerank}，请求体为嵌套结构：
- * <pre>{"model":"qwen3-vl-rerank","input":{"query":..,"documents":[..]},"top_n":N}</pre>
- * 响应 {@code output.results[].index} 已按相关性降序，返回原始文档索引列表。
- *
- * <p>容错：API 调用失败时静默降级，返回原始顺序。
+ * <p>The legacy {@link #rerank(String, List, int)} method returns document indices only.
+ * Candidate matching uses {@link #rerankWithScore(String, List, int)} so the rerank signal
+ * can be fused into the final score.
  */
 @Service
 public class RerankService {
@@ -33,14 +29,8 @@ public class RerankService {
     private static final Logger log = LoggerFactory.getLogger(RerankService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** 百炼原生 rerank 端点 (相对 baseUrl)。 */
     private static final String RERANK_PATH = "/api/v1/services/rerank/text-rerank/text-rerank";
-
-    /** 招聘场景化 instruct (对齐参考)。 */
-    private static final String INSTRUCT =
-            "根据岗位需求，按技术技能匹配度和相关工作经验对候选人简历排序";
-
-    /** 文档截断长度 (对齐参考: 800 字)。 */
+    private static final String INSTRUCT = "根据岗位需求，按技术技能匹配度和相关工作经验对候选人简历排序";
     private static final int MAX_DOC_CHARS = 800;
 
     private final AppProperties props;
@@ -59,17 +49,18 @@ public class RerankService {
                 .build();
     }
 
-    /**
-     * 对 documents 按 query 相关性重排，返回 topN 个文档的原始索引 (按相关性降序)。
-     * 失败时返回原始顺序 (降级策略)。
-     */
     public List<Integer> rerank(String query, List<String> documents, int topN) {
+        return rerankWithScore(query, documents, topN).stream()
+                .map(RerankResult::index)
+                .toList();
+    }
+
+    public List<RerankResult> rerankWithScore(String query, List<String> documents, int topN) {
         if (documents == null || documents.isEmpty()) {
             return List.of();
         }
-        // 对齐参考: documents.size()<=topN 直接原序返回不调 API
-        if (documents.size() <= topN) {
-            return IntStream.range(0, documents.size()).boxed().toList();
+        if (documents.size() == 1 || topN <= 0) {
+            return originalOrder(documents.size(), Math.max(topN, 1));
         }
         if (useMock()) {
             return mockRerank(query, documents, topN);
@@ -77,14 +68,16 @@ public class RerankService {
         try {
             ObjectNode requestBody = MAPPER.createObjectNode();
             requestBody.put("model", props.getRerank().getModel());
+
             ObjectNode input = requestBody.putObject("input");
             input.put("query", query == null ? "" : query);
-            // 对齐参考: 加 instruct 字段 (招聘场景化引导)
             input.put("instruct", INSTRUCT);
+
             ArrayNode docs = input.putArray("documents");
-            for (String d : documents) {
-                // 对齐参考: 文档截断 800 字
-                String truncated = (d == null) ? "" : (d.length() > MAX_DOC_CHARS ? d.substring(0, MAX_DOC_CHARS) : d);
+            for (String document : documents) {
+                String truncated = document == null
+                        ? ""
+                        : document.substring(0, Math.min(document.length(), MAX_DOC_CHARS));
                 docs.add(truncated);
             }
             requestBody.put("top_n", Math.min(topN, documents.size()));
@@ -98,14 +91,18 @@ public class RerankService {
                     .timeout(Duration.ofSeconds(15))
                     .block();
 
-            // 响应: {"output":{"results":[{"index":0,"relevance_score":0.79}, ...]}, "usage":{...}}
             JsonNode results = MAPPER.readTree(response).path("output").path("results");
-            List<Integer> indices = new ArrayList<>();
-            results.forEach(r -> indices.add(r.path("index").asInt()));
-            return indices.size() > topN ? indices.subList(0, topN) : indices;
+            List<RerankResult> ranked = new ArrayList<>();
+            results.forEach(result -> ranked.add(new RerankResult(
+                    result.path("index").asInt(),
+                    normalizeScore(result.path("relevance_score").asDouble(0.0)))));
+            if (ranked.isEmpty()) {
+                return originalOrder(documents.size(), topN);
+            }
+            return ranked.size() > topN ? ranked.subList(0, topN) : ranked;
         } catch (Exception e) {
-            log.warn("Rerank failed: {}", e.getMessage());
-            throw new IllegalStateException("重排序服务调用失败，请稍后重试", e);
+            log.warn("Rerank failed, using vector order: {}", e.getMessage());
+            return originalOrder(documents.size(), topN);
         }
     }
 
@@ -113,8 +110,7 @@ public class RerankService {
         return props.useMock() || !props.rerankKeyPresent();
     }
 
-    /** Mock 重排：按与 query 的字符重叠度降序。 */
-    private List<Integer> mockRerank(String query, List<String> documents, int topN) {
+    private List<RerankResult> mockRerank(String query, List<String> documents, int topN) {
         List<String> queryChars = query == null ? List.of() :
                 query.codePoints().mapToObj(String::valueOf).distinct().toList();
         return IntStream.range(0, documents.size())
@@ -125,6 +121,7 @@ public class RerankService {
                     return Double.compare(sj, si);
                 })
                 .limit(topN)
+                .map(i -> new RerankResult(i, normalizeScore(overlap(queryChars, documents.get(i)))))
                 .toList();
     }
 
@@ -135,4 +132,24 @@ public class RerankService {
         long hit = queryChars.stream().filter(doc::contains).count();
         return (double) hit / queryChars.size();
     }
+
+    private List<RerankResult> originalOrder(int size, int topN) {
+        int limit = Math.min(size, Math.max(topN, 0));
+        return IntStream.range(0, limit)
+                .mapToObj(i -> new RerankResult(i, rankScore(i)))
+                .toList();
+    }
+
+    private double rankScore(int zeroBasedRank) {
+        return Math.max(0.0, 100.0 - zeroBasedRank * 5.0);
+    }
+
+    private double normalizeScore(double raw) {
+        if (raw <= 1.0) {
+            return Math.max(0.0, Math.min(100.0, raw * 100.0));
+        }
+        return Math.max(0.0, Math.min(100.0, raw));
+    }
+
+    public record RerankResult(int index, double score) {}
 }

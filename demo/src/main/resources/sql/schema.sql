@@ -53,9 +53,7 @@ CREATE TABLE IF NOT EXISTS job_profile (
     education       VARCHAR(50),
     headcount       INT,
     category        VARCHAR(100),
-    weight_matrix   JSONB,
-    role_graph      JSONB,
-    growth_path     JSONB,
+    parsed_json     JSONB,                            -- 镜像简历 structuredData 的结构化分析结果
     embedding       VECTOR(1024),
     status          VARCHAR(20) DEFAULT 'draft',     -- draft/active/closed
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -63,6 +61,13 @@ CREATE TABLE IF NOT EXISTS job_profile (
 );
 CREATE INDEX IF NOT EXISTS idx_job_status    ON job_profile (status);
 CREATE INDEX IF NOT EXISTS idx_job_embedding ON job_profile USING hnsw (embedding vector_cosine_ops);
+
+-- 增量迁移: job_profile 字段对齐简历 structuredData
+-- 旧三列 weight_matrix/role_graph/growth_path 已废弃, 改用 parsed_json 存镜像简历的结构化结果
+ALTER TABLE job_profile ADD COLUMN IF NOT EXISTS parsed_json JSONB;
+ALTER TABLE job_profile DROP COLUMN IF EXISTS weight_matrix;
+ALTER TABLE job_profile DROP COLUMN IF EXISTS role_graph;
+ALTER TABLE job_profile DROP COLUMN IF EXISTS growth_path;
 
 -- ─────────────────── 3.1.3 candidate_match 候选人匹配表 ───────────────────
 CREATE TABLE IF NOT EXISTS candidate_match (

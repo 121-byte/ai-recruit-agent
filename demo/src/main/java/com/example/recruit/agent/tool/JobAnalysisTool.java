@@ -64,7 +64,7 @@ public class JobAnalysisTool {
 
     @Tool(
             name = "analyzeJob",
-            description = "分析岗位 JD，提取技能要求、权重矩阵、角色图谱、成长路径。返回结构化分析结果。",
+            description = "分析岗位 JD，提取与简历结构对齐的技能要求、职责、项目方向、学历、硬性门槛、角色图谱与成长路径。返回结构化分析结果。",
             concurrencySafe = false)
     public Map<String, Object> analyzeJob(
             @ToolParam(name = "jobId", description = "岗位 ID（先用 listJobs 查询）")

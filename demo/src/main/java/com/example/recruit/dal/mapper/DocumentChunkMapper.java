@@ -72,6 +72,44 @@ public interface DocumentChunkMapper extends BaseMapper<DocumentChunk> {
                                        @Param("parentId") Long parentId);
 
     /**
+     * 统计指定 parent_type + parent_id 的分块数。
+     */
+    @Select("SELECT COUNT(*) FROM document_chunk WHERE parent_type = #{parentType} AND parent_id = #{parentId}")
+    long countByParent(@Param("parentType") String parentType,
+                       @Param("parentId") Long parentId);
+
+    /**
+     * chunk↔chunk 召回: 对岗位 (parent_type='job', parent_id=jobId) 的每个分块,
+     * 在同 chunk_type 的简历分块里找最近的那块 (MIN cosine), 按 resume 汇总各类型最佳距离之和,
+     * 升序取 topK。filtersCsv/filtersLike/filtersRegex 与 {@link #searchByVectorWithFilter} 同形式。
+     * 返回 List&lt;Map&gt; (含 resume_id, total_dist)。
+     */
+    @Select("<script>" +
+            "SELECT best.pid AS resume_id, SUM(best.min_dist) AS total_dist " +
+            "FROM document_chunk jc " +
+            "JOIN LATERAL (" +
+            "  SELECT MIN(rc.embedding &lt;=&gt; jc.embedding) AS min_dist, rc.parent_id AS pid " +
+            "  FROM document_chunk rc " +
+            "  WHERE rc.parent_type = 'resume' AND rc.chunk_type = jc.chunk_type " +
+            "  GROUP BY rc.parent_id" +
+            ") best ON true " +
+            "JOIN resume r ON r.id = best.pid " +
+            "WHERE jc.parent_type = 'job' AND jc.parent_id = #{jobId} " +
+            "<if test='filtersCsv != null and filtersCsv != \"\"'>" +
+            "AND (r.parsed_json-&gt;&gt;'intended_position' ILIKE #{filtersLike} " +
+            "OR r.raw_text ~* #{filtersRegex}) " +
+            "</if>" +
+            "GROUP BY best.pid " +
+            "ORDER BY total_dist " +
+            "LIMIT #{topK}" +
+            "</script>")
+    List<Map<String, Object>> searchResumeByJobChunks(@Param("jobId") Long jobId,
+                                                       @Param("filtersCsv") String filtersCsv,
+                                                       @Param("filtersLike") String filtersLike,
+                                                       @Param("filtersRegex") String filtersRegex,
+                                                       @Param("topK") int topK);
+
+    /**
      * 统计指定 parent_type 的分块数。
      */
     @Select("SELECT COUNT(*) FROM document_chunk WHERE parent_type = #{parentType}")

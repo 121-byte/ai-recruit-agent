@@ -1,7 +1,9 @@
 package com.example.recruit.module.match.api;
 
 import com.example.recruit.dal.entity.CandidateMatch;
+import com.example.recruit.module.match.api.dto.RunMatchRequest;
 import com.example.recruit.module.match.application.CandidateMatchService;
+import com.example.recruit.module.match.application.MatchTaskService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,9 +32,12 @@ import java.util.Map;
 public class CandidateMatchController {
 
     private final CandidateMatchService candidateMatchService;
+    private final MatchTaskService matchTaskService;
 
-    public CandidateMatchController(CandidateMatchService candidateMatchService) {
+    public CandidateMatchController(CandidateMatchService candidateMatchService,
+                                    MatchTaskService matchTaskService) {
         this.candidateMatchService = candidateMatchService;
+        this.matchTaskService = matchTaskService;
     }
 
     /** POST —— 无参创建匹配记录。 */
@@ -43,8 +48,16 @@ public class CandidateMatchController {
 
     /** POST /job/{jobId}/run —— 执行岗位匹配。 */
     @PostMapping("/job/{jobId}/run")
-    public ResponseEntity<Map<String, Object>> runMatch(@PathVariable Long jobId) {
-        return ResponseEntity.ok(candidateMatchService.matchForJob(jobId));
+    public ResponseEntity<Map<String, Object>> runMatch(@PathVariable Long jobId,
+                                                        @RequestBody(required = false) RunMatchRequest request) {
+        CandidateMatchService.MatchWeights weights = CandidateMatchService.MatchWeights.fromMap(
+                request == null ? null : request.getWeights());
+        return ResponseEntity.ok(matchTaskService.start(jobId, weights));
+    }
+
+    @GetMapping("/job/{jobId}/task")
+    public ResponseEntity<Map<String, Object>> matchTask(@PathVariable Long jobId) {
+        return ResponseEntity.ok(matchTaskService.status(jobId));
     }
 
     /** GET /job/{jobId} —— 按岗位列出匹配结果。 */

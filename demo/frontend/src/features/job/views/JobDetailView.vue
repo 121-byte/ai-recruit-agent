@@ -44,25 +44,45 @@
           <div class="section-heading">
             <div>
               <h3>AI 岗位分析</h3>
-              <p>分析后可查看已沉淀的技能权重、角色关系与成长路径。</p>
+              <p>分析后可查看与简历结构对齐的技能要求、职责、项目方向、学历与硬性门槛。</p>
             </div>
             <span v-if="!hasAnalysis" class="card-hint">尚未分析</span>
           </div>
           <div class="analysis-grid">
             <section class="card">
-              <div class="card-head"><h3>技能权重矩阵</h3></div>
-              <JsonView v-if="hasWeightMatrix" :data="job.weightMatrix" />
-              <EmptyHint v-else text="暂无技能权重分析" />
+              <div class="card-head"><h3>技能要求</h3></div>
+              <JsonView v-if="hasSkills" :data="parsed.skills" />
+              <EmptyHint v-else text="暂无技能要求" />
             </section>
             <section class="card">
-              <div class="card-head"><h3>岗位角色图谱</h3></div>
-              <JsonView v-if="hasRoleGraph" :data="job.roleGraph" />
-              <EmptyHint v-else text="暂无角色关系分析" />
+              <div class="card-head"><h3>岗位职责</h3></div>
+              <JsonView v-if="hasResponsibilities" :data="parsed.responsibilities" />
+              <EmptyHint v-else text="暂无职责分析" />
+            </section>
+            <section class="card">
+              <div class="card-head"><h3>项目方向</h3></div>
+              <JsonView v-if="hasProjectContext" :data="parsed.projectContext" />
+              <EmptyHint v-else text="暂无项目方向" />
+            </section>
+            <section class="card">
+              <div class="card-head"><h3>学历要求</h3></div>
+              <JsonView v-if="hasEducation" :data="parsed.education" />
+              <EmptyHint v-else text="暂无学历要求" />
+            </section>
+            <section class="card">
+              <div class="card-head"><h3>硬性门槛</h3></div>
+              <JsonView v-if="hasRequirements" :data="parsed.requirements" />
+              <EmptyHint v-else text="暂无硬性门槛" />
+            </section>
+            <section class="card">
+              <div class="card-head"><h3>角色图谱</h3></div>
+              <JsonView v-if="hasRoleGraph" :data="parsed.roleGraph" />
+              <EmptyHint v-else text="暂无角色关系" />
             </section>
             <section class="card full-width">
               <div class="card-head"><h3>成长路径</h3></div>
-              <JsonView v-if="hasGrowthPath" :data="job.growthPath" />
-              <EmptyHint v-else text="暂无成长路径分析" />
+              <JsonView v-if="hasGrowthPath" :data="parsed.growthPath" />
+              <EmptyHint v-else text="暂无成长路径" />
             </section>
           </div>
         </section>
@@ -90,10 +110,18 @@ const EmptyHint = {
 }
 
 const hasValue = (value) => value && typeof value === 'object' && Object.keys(value).length > 0
-const hasWeightMatrix = computed(() => hasValue(job.value?.weightMatrix))
-const hasRoleGraph = computed(() => hasValue(job.value?.roleGraph))
-const hasGrowthPath = computed(() => hasValue(job.value?.growthPath))
-const hasAnalysis = computed(() => hasWeightMatrix.value || hasRoleGraph.value || hasGrowthPath.value)
+const hasArray = (value) => Array.isArray(value) && value.length > 0
+const parsed = computed(() => job.value?.parsedJson || {})
+const hasSkills = computed(() => hasArray(parsed.value.skills))
+const hasResponsibilities = computed(() => hasArray(parsed.value.responsibilities))
+const hasProjectContext = computed(() => hasArray(parsed.value.projectContext))
+const hasEducation = computed(() => hasValue(parsed.value.education))
+const hasRequirements = computed(() => hasValue(parsed.value.requirements))
+const hasRoleGraph = computed(() => hasValue(parsed.value.roleGraph))
+const hasGrowthPath = computed(() => hasArray(parsed.value.growthPath))
+const hasAnalysis = computed(() =>
+  hasSkills.value || hasResponsibilities.value || hasProjectContext.value
+  || hasEducation.value || hasRequirements.value || hasRoleGraph.value || hasGrowthPath.value)
 
 const salaryText = computed(() => {
   if (job.value?.salaryMin != null && job.value?.salaryMax != null) return `${job.value.salaryMin}K-${job.value.salaryMax}K`

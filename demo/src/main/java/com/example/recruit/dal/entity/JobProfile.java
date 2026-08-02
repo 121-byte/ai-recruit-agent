@@ -45,17 +45,12 @@ public class JobProfile {
 
     private String category;
 
-    /** 技能权重矩阵 (LLM 解析) */
+    /**
+     * 岗位结构化分析结果 (镜像简历 structuredData: positionInfo/skills/responsibilities/
+     * projectContext/education/certifications/requirements/roleGraph/growthPath)。
+     */
     @TableField(typeHandler = JacksonTypeHandler.class)
-    private JsonNode weightMatrix;
-
-    /** 角色图谱 */
-    @TableField(typeHandler = JacksonTypeHandler.class)
-    private JsonNode roleGraph;
-
-    /** 成长路径 */
-    @TableField(typeHandler = JacksonTypeHandler.class)
-    private JsonNode growthPath;
+    private JsonNode parsedJson;
 
     /** 岗位向量 (1024 维) */
     @TableField(typeHandler = FloatVectorTypeHandler.class)

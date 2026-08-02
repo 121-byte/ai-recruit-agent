@@ -81,6 +81,77 @@ public class VectorSearchService {
     }
 
     /**
+     * chunk↔chunk 召回: 优先用岗位 (jobId) 自身的语义分块, 与简历同 chunk_type 分块逐类型比对、
+     * 汇总各类型最佳距离之和排序。岗位未分块时返回空, 由调用方回退 {@link #searchCandidates}。
+     */
+    public List<Resume> searchCandidatesByJob(Long jobId, int topK, List<String> positionFilters) {
+        if (jobId == null) {
+            return List.of();
+        }
+        try {
+            long jobChunkCount = documentChunkMapper.countByParent("job", jobId);
+            if (jobChunkCount <= 0) {
+                return List.of();
+            }
+            String filtersCsv = "";
+            String filtersLike = "";
+            String filtersRegex = "";
+            if (positionFilters != null && !positionFilters.isEmpty()) {
+                filtersCsv = positionFilters.stream()
+                        .map(f -> "'" + f.replace("'", "''") + "'")
+                        .collect(Collectors.joining(","));
+                filtersLike = positionFilters.stream()
+                        .map(f -> "%" + f.replace("'", "''") + "%")
+                        .collect(Collectors.joining("|"));
+                filtersRegex = positionFilters.stream()
+                        .map(f -> f.replace("'", "''"))
+                        .collect(Collectors.joining("|"));
+            }
+            List<Map<String, Object>> rows = documentChunkMapper.searchResumeByJobChunks(
+                    jobId, filtersCsv, filtersLike, filtersRegex, topK);
+            if (rows == null || rows.isEmpty()) {
+                return List.of();
+            }
+            List<Long> resumeIds = new ArrayList<>();
+            Map<Long, Double> distMap = new HashMap<>();
+            for (Map<String, Object> row : rows) {
+                Object ridObj = row.get("resume_id");
+                if (ridObj == null) continue;
+                Long rid = ((Number) ridObj).longValue();
+                resumeIds.add(rid);
+                Object distObj = row.get("total_dist");
+                distMap.put(rid, distObj != null ? ((Number) distObj).doubleValue() : Double.MAX_VALUE);
+            }
+            if (resumeIds.isEmpty()) {
+                return List.of();
+            }
+            resumeIds.sort(Comparator.comparingDouble(rid -> distMap.getOrDefault(rid, Double.MAX_VALUE)));
+            String idsSql = resumeIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            List<Resume> resumes = resumeMapper.selectByIds(idsSql);
+            if (resumes == null) {
+                return List.of();
+            }
+            Map<Long, Resume> resumeMap = new HashMap<>();
+            for (Resume r : resumes) {
+                if (r.getId() != null) {
+                    resumeMap.put(r.getId(), r);
+                }
+            }
+            List<Resume> result = new ArrayList<>();
+            for (Long rid : resumeIds) {
+                Resume r = resumeMap.get(rid);
+                if (r != null) {
+                    result.add(r);
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            log.warn("searchCandidatesByJob failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
      * 分块级召回: searchByVector/searchByVectorWithFilter → 提取 parent_id → selectByIds 装载。
      */
     private List<Resume> searchByChunks(String literal, int topK, List<String> positionFilters) {

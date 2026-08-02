@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -49,7 +48,8 @@ public class DocumentChunkService {
 
     /**
      * 对岗位分块并向量化入库。
-     * 先清理旧分块, 再按 summary/skill/experience/education 重建。
+     * 先清理旧分块, 再从 parsed_json 按 5 类语义段 (basic_info/skills/work_exp/projects/education)
+     * 重建, chunk_type 与简历分块同名, 供 chunk↔chunk 召回。
      */
     public int chunkAndEmbedJob(Long jobId) {
         if (jobId == null) {
@@ -68,38 +68,133 @@ public class DocumentChunkService {
             List<DocumentChunk> chunks = new ArrayList<>();
             int idx = 0;
 
-            // summary: 标题 + 部门 + JD 文本
-            StringBuilder summary = new StringBuilder();
-            if (job.getTitle() != null) {
-                summary.append(job.getTitle());
-            }
-            if (job.getDepartment() != null) {
-                summary.append(" / ").append(job.getDepartment());
-            }
-            String jdText = job.getJdText();
-            if (jdText != null && !jdText.isBlank()) {
-                summary.append(": ").append(jdText);
-            }
-            String summaryText = summary.toString();
-            if (!summaryText.isBlank()) {
-                chunks.add(buildChunk("job", jobId, idx++, "summary", summaryText));
+            JsonNode parsed = job.getParsedJson();
+            if (parsed == null || parsed.isMissingNode() || parsed.isNull()) {
+                // 无结构化结果: 回退用标题+JD 整体作 'full' 单块
+                String summaryText = joinNonBlank(" / ", job.getTitle(), job.getDepartment());
+                String jd = job.getJdText();
+                if (jd != null && !jd.isBlank()) {
+                    summaryText = summaryText.isBlank() ? jd : summaryText + ": " + jd;
+                }
+                if (!summaryText.isBlank()) {
+                    chunks.add(buildChunk("job", jobId, idx++, "full", summaryText));
+                }
+                return embedAndInsert(chunks);
             }
 
-            // skill: 从 weightMatrix 提取技能权重键
-            idx = addJsonKeysAsChunks(job.getWeightMatrix(), "job", jobId, idx, "skill", chunks);
+            // basic_info: 标题/部门/职级/地点/类别/经验/学历拼一块
+            JsonNode pos = parsed.path("positionInfo");
+            StringBuilder bi = new StringBuilder();
+            appendField(bi, "岗位", job.getTitle());
+            appendField(bi, "部门", textOf(pos, "department"));
+            appendField(bi, "职级", textOf(pos, "level"));
+            appendField(bi, "地点", textOf(pos, "location"));
+            appendField(bi, "类别", job.getCategory() != null ? job.getCategory() : textOf(pos, "category"));
+            JsonNode expMin = pos.path("experienceMin");
+            JsonNode expMax = pos.path("experienceMax");
+            if (expMin.isNumber() || expMax.isNumber()) {
+                appendField(bi, "经验要求",
+                        (expMin.isNumber() ? expMin.asInt() + "" : "") + "-" +
+                        (expMax.isNumber() ? expMax.asInt() + "" : "") + "年");
+            }
+            appendField(bi, "学历", textOf(pos, "education"));
+            if (bi.length() > 0) {
+                chunks.add(buildChunk("job", jobId, idx++, "basic_info", bi.toString()));
+            }
 
-            // experience / education: JobProfile 无对应字段, 从 growthPath 提取作为 experience
-            idx = addJsonKeysAsChunks(job.getGrowthPath(), "job", jobId, idx, "experience", chunks);
+            // skills: 逐条一块, 与简历 skills 同 chunk_type
+            JsonNode skills = parsed.path("skills");
+            if (skills.isArray()) {
+                for (JsonNode s : skills) {
+                    String name = textOf(s, "name");
+                    if (name == null) continue;
+                    StringBuilder sb = new StringBuilder(name);
+                    int level = intOf(s, "requiredLevel");
+                    if (level > 0) sb.append("(要求").append(level).append("级");
+                    int years = intOf(s, "years");
+                    if (years > 0) sb.append(",").append(years).append("年");
+                    sb.append(")");
+                    double w = doubleOf(s, "weight");
+                    if (w > 0) sb.append("权重").append(w);
+                    chunks.add(buildChunk("job", jobId, idx++, "skills", sb.toString()));
+                }
+            }
 
-            // roleGraph 作为 experience 补充
-            idx = addJsonKeysAsChunks(job.getRoleGraph(), "job", jobId, idx, "experience", chunks);
+            // responsibilities: 逐条一块, chunk_type=work_exp (对应简历工作经历)
+            idx = addJobArrayAsChunks(parsed, "responsibilities", jobId, idx, "work_exp", chunks,
+                    n -> joinNonBlank(": ", textOf(n, "name"), textOf(n, "description")));
 
-            // 向量化并批量写入
+            // projectContext: 逐条一块, chunk_type=projects
+            idx = addJobArrayAsChunks(parsed, "projectContext", jobId, idx, "projects", chunks,
+                    n -> joinNonBlank(": ", textOf(n, "name"), textOf(n, "description")));
+
+            // education: 一块
+            JsonNode edu = parsed.path("education");
+            String eduText = edu.isObject() ? joinNonBlank(" / ",
+                    textOf(edu, "degree"), textOf(edu, "major"), textOf(edu, "school")) : null;
+            if (eduText != null) {
+                chunks.add(buildChunk("job", jobId, idx++, "education", eduText));
+            }
+
             return embedAndInsert(chunks);
         } catch (Exception e) {
             log.warn("chunkAndEmbedJob failed: {}", e.getMessage());
             return 0;
         }
+    }
+
+    /** 将 parsed_json 中某数组字段的每个元素提取为独立分块, 文本由 formatter 决定。 */
+    private int addJobArrayAsChunks(JsonNode parsed, String fieldName, Long parentId, int idx,
+                                    String chunkType, List<DocumentChunk> chunks,
+                                    java.util.function.Function<JsonNode, String> formatter) {
+        JsonNode arr = parsed.path(fieldName);
+        if (arr == null || !arr.isArray() || arr.isEmpty()) {
+            return idx;
+        }
+        for (JsonNode el : arr) {
+            String text = formatter.apply(el);
+            if (text != null && !text.isBlank()) {
+                chunks.add(buildChunk("job", parentId, idx++, chunkType, text));
+            }
+        }
+        return idx;
+    }
+
+    private void appendField(StringBuilder sb, String label, String value) {
+        if (value == null || value.isBlank()) return;
+        if (sb.length() > 0) sb.append("; ");
+        sb.append(label).append(": ").append(value);
+    }
+
+    private String textOf(JsonNode parent, String field) {
+        if (parent == null) return null;
+        JsonNode n = parent.get(field);
+        if (n == null || n.isNull() || n.isMissingNode()) return null;
+        String s = n.isTextual() ? n.asText() : n.toString();
+        s = s.trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    private int intOf(JsonNode parent, String field) {
+        JsonNode n = parent == null ? null : parent.get(field);
+        if (n == null || !n.isNumber()) return 0;
+        return n.asInt();
+    }
+
+    private double doubleOf(JsonNode parent, String field) {
+        JsonNode n = parent == null ? null : parent.get(field);
+        if (n == null || !n.isNumber()) return 0;
+        return n.asDouble();
+    }
+
+    private String joinNonBlank(String sep, String... parts) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p == null || p.isBlank()) continue;
+            if (sb.length() > 0) sb.append(sep);
+            sb.append(p);
+        }
+        return sb.toString();
     }
 
     /**
@@ -256,22 +351,6 @@ public class DocumentChunkService {
             String text = nodeToText(el);
             if (text != null && !text.isBlank()) {
                 chunks.add(buildChunk(parentType, parentId, idx++, chunkType, text));
-            }
-        }
-        return idx;
-    }
-
-    /** 将 JsonNode 对象的顶层键提取为分块 (键作内容, 用于 weightMatrix 等)。 */
-    private int addJsonKeysAsChunks(JsonNode parent, String parentType, Long parentId,
-                                    int idx, String chunkType, List<DocumentChunk> chunks) {
-        if (parent == null || !parent.isObject()) {
-            return idx;
-        }
-        Iterator<String> names = parent.fieldNames();
-        while (names.hasNext()) {
-            String name = names.next();
-            if (name != null && !name.isBlank()) {
-                chunks.add(buildChunk(parentType, parentId, idx++, chunkType, name));
             }
         }
         return idx;

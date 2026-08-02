@@ -1,7 +1,10 @@
 import request from './request'
 
-export function runMatch(jobId) {
-  return request.post(`/matches/job/${jobId}/run`)
+export function runMatch(jobId, payload = {}) {
+  return request.post(`/matches/job/${jobId}/run`, payload)
+}
+export function getMatchTask(jobId) {
+  return request.get(`/matches/job/${jobId}/task`)
 }
 export function getMatchesByJob(jobId) {
   return request.get(`/matches/job/${jobId}`)
