@@ -1,5 +1,6 @@
 package com.example.recruit.memory;
 
+import com.example.recruit.config.AppProperties;
 import com.example.recruit.dal.entity.MemoryEntry;
 import com.example.recruit.dal.handler.FloatVectorTypeHandler;
 import com.example.recruit.dal.mapper.MemoryEntryMapper;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -60,15 +62,18 @@ public class HybridMemoryRetriever {
     private final EmbeddingService embeddingService;
     private final JdbcTemplate jdbcTemplate;
     private final RerankService rerankService;
+    private final AppProperties appProperties;
 
     public HybridMemoryRetriever(MemoryEntryMapper memoryEntryMapper,
                                  EmbeddingService embeddingService,
                                  JdbcTemplate jdbcTemplate,
-                                 RerankService rerankService) {
+                                 RerankService rerankService,
+                                 AppProperties appProperties) {
         this.memoryEntryMapper = memoryEntryMapper;
         this.embeddingService = embeddingService;
         this.jdbcTemplate = jdbcTemplate;
         this.rerankService = rerankService;
+        this.appProperties = appProperties;
     }
 
     /**
@@ -148,8 +153,34 @@ public class HybridMemoryRetriever {
             }
         }
 
+        // 检索命中续期: 批量 access_count+1 / last_access / ttl_expires_at (艾宾浩斯留存曲线, 一次 UPDATE)
+        renewAccessForHits(result);
+
         CACHE.get().put(cacheKey, result);
         return result;
+    }
+
+    /** 对命中记忆批量续期 (同请求只续一次); 失败仅 log, 不影响检索主流程。 */
+    private void renewAccessForHits(List<ScoredMemory> result) {
+        if (result.isEmpty()) {
+            return;
+        }
+        List<Long> ids = result.stream()
+                .map(sm -> sm.entry.getId())
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toList());
+        if (ids.isEmpty()) {
+            return;
+        }
+        try {
+            AppProperties.Memory mem = appProperties.getMemory();
+            double baseTtlSeconds = mem.getHalfLifeDays() * 86400.0 * Math.log(1.0 / mem.getForgetThreshold());
+            long minRetentionSeconds = (long) mem.getMinRetentionDays() * 86400L;
+            memoryEntryMapper.renewAccess(ids, baseTtlSeconds,
+                    mem.getKImportance(), mem.getKAccess(), minRetentionSeconds);
+        } catch (Exception e) {
+            log.debug("renewAccess failed: {}", e.getMessage());
+        }
     }
 
     /** 清理 ThreadLocal 缓存：每轮对话结束时调用。 */
@@ -323,6 +354,7 @@ public class HybridMemoryRetriever {
         entry.setMemoryKey(rs.getString("memory_key"));
         entry.setMemoryValue(rs.getString("memory_value"));
         entry.setCategory(rs.getString("category"));
+        entry.setTags(toStringArray(rs.getArray("tags")));
         entry.setAccessCount(rs.getInt("access_count"));
         entry.setLastAccess(rs.getTimestamp("last_access") != null
                 ? rs.getTimestamp("last_access").toLocalDateTime() : null);
@@ -334,5 +366,21 @@ public class HybridMemoryRetriever {
                 ? rs.getTimestamp("updated_at").toLocalDateTime() : null);
         double similarity = rs.getDouble("similarity");
         return new ScoredMemory(entry, similarity, source);
+    }
+
+    /** Postgres TEXT[] → String[]; null/异常返回空数组。 */
+    private String[] toStringArray(Array array) throws SQLException {
+        if (array == null) {
+            return new String[0];
+        }
+        Object arr = array.getArray();
+        if (arr instanceof Object[] oa) {
+            String[] result = new String[oa.length];
+            for (int i = 0; i < oa.length; i++) {
+                result[i] = oa[i] == null ? null : oa[i].toString();
+            }
+            return result;
+        }
+        return new String[0];
     }
 }

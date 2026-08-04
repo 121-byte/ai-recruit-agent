@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS memory_entry (
     last_access     TIMESTAMP,
     importance      DOUBLE PRECISION DEFAULT 0.5,
     embedding       VECTOR(1024),
+    ttl_expires_at  TIMESTAMP,                          -- 动态 TTL 过期点 (艾宾浩斯留存曲线: last_access + eff_half_life * ln(1/threshold))
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (agent_id, memory_key)
@@ -106,6 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_agent    ON memory_entry (agent_id);
 CREATE INDEX IF NOT EXISTS idx_memory_category ON memory_entry (agent_id, category);
 CREATE INDEX IF NOT EXISTS idx_memory_embedding ON memory_entry USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_memory_value_trgm ON memory_entry USING gin (memory_value gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_memory_ttl ON memory_entry (ttl_expires_at);
 
 -- ─────────────────── 3.1.5 memory_graph 记忆图谱边表 ───────────────────
 CREATE TABLE IF NOT EXISTS memory_graph (
@@ -119,6 +121,9 @@ CREATE TABLE IF NOT EXISTS memory_graph (
 );
 CREATE INDEX IF NOT EXISTS idx_graph_source ON memory_graph (source_entry_id, agent_id);
 CREATE INDEX IF NOT EXISTS idx_graph_target ON memory_graph (target_entry_id, agent_id);
+-- 共现边唯一约束 (含 agent_id): 解决 PK 不含 agent_id 的跨 agent 串扰隐患, 支持赫布增强 ON CONFLICT
+CREATE UNIQUE INDEX IF NOT EXISTS uq_graph_agent_edge
+    ON memory_graph (source_entry_id, target_entry_id, relation_type, agent_id);
 
 -- ─────────────────── 3.1.6 document_chunk 文档语义分块表 ───────────────────
 CREATE TABLE IF NOT EXISTS document_chunk (
@@ -299,6 +304,10 @@ ALTER TABLE chat_message ADD COLUMN IF NOT EXISTS reasoning TEXT;
 
 -- memory_entry: category 默认值改 'general' (参考用 general, 当前 note)
 ALTER TABLE memory_entry ALTER COLUMN category SET DEFAULT 'general';
+
+-- memory_entry: 补 ttl_expires_at (动态 TTL 遗忘, 对齐 hebb 留存曲线)
+ALTER TABLE memory_entry ADD COLUMN IF NOT EXISTS ttl_expires_at TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_memory_ttl ON memory_entry (ttl_expires_at);
 
 -- memory_graph: 补 created_at (复合 PK 已支持 ON CONFLICT DO NOTHING 去重)
 ALTER TABLE memory_graph ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;

@@ -70,6 +70,8 @@ public class PostgresLongTermMemory {
         entry.setLastAccess(now);
         entry.setImportance(0.5);
         entry.setEmbedding(emb);
+        // 预算初始 TTL: 基于初始 importance(0.5)/access_count(0) 的艾宾浩斯留存曲线过期点
+        entry.setTtlExpiresAt(appProperties.getMemory().computeTtl(now, 0.5, 0));
         entry.setCreatedAt(now);
         entry.setUpdatedAt(now);
         memoryEntryMapper.insert(entry);
@@ -86,7 +88,11 @@ public class PostgresLongTermMemory {
             existing.setMemoryValue(value);
             existing.setCategory(category);
             existing.setEmbedding(emb);
-            existing.setUpdatedAt(LocalDateTime.now());
+            LocalDateTime now = LocalDateTime.now();
+            existing.setUpdatedAt(now);
+            // 内容变化后重算 TTL (基于现有 importance/access_count, 续期基点取 now)
+            existing.setTtlExpiresAt(appProperties.getMemory().computeTtl(
+                    now, existing.getImportance(), existing.getAccessCount()));
             memoryEntryMapper.updateById(existing);
             return;
         }

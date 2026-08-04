@@ -142,15 +142,17 @@ public class MemoryConsolidationAgent {
                         // 对齐参考: importance 默认值
                         target.setImportance(target.getImportance() != null ? target.getImportance() : 0.5);
                     }
-                    // tags 仅 log.debug，不写库 (不更新 memory_entry.tags)
+                    // tags 写库: LLM 输出 tags 数组持久化到 memory_entry.tags (此前仅 log)
                     JsonNode tagsNode = oe.path("tags");
                     if (tagsNode.isArray()) {
-                        StringBuilder tagStr = new StringBuilder();
+                        java.util.List<String> tagList = new java.util.ArrayList<>();
                         for (int i = 0; i < tagsNode.size(); i++) {
-                            if (i > 0) tagStr.append(",");
-                            tagStr.append(tagsNode.get(i).asText(""));
+                            String t = tagsNode.get(i).asText("");
+                            if (!t.isBlank()) {
+                                tagList.add(t.trim());
+                            }
                         }
-                        log.debug("consolidate tags (not persisted): key={} tags={}", key, tagStr);
+                        target.setTags(tagList.toArray(new String[0]));
                     }
                     String summary = JsonGuard.text(oe, "summary");
                     String value = JsonGuard.text(oe, "value");
@@ -191,10 +193,11 @@ public class MemoryConsolidationAgent {
                     if (wNode.isNumber()) {
                         weight = wNode.asDouble();
                     }
-                    // JdbcTemplate INSERT ON CONFLICT DO NOTHING (替代 selectCount+insert)
+                    // JdbcTemplate INSERT ON CONFLICT (指定含 agent_id 的唯一约束, 避免跨 agent 串扰)
                     jdbcTemplate.update(
                             "INSERT INTO memory_graph(source_entry_id, target_entry_id, agent_id, relation_type, weight) " +
-                            "VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (source_entry_id, target_entry_id, relation_type, agent_id) " +
+                            "DO NOTHING",
                             src.getId(), tgt.getId(), agentId, relationType, weight);
                     edgesCreated++;
                 } catch (Exception e) {
@@ -203,8 +206,59 @@ public class MemoryConsolidationAgent {
             }
         }
 
+        // Step 4.5: 标签共现图谱 (赫布增强) — 同批共享 tag 的 entries 建共现边, 重复共现 weight 递增
+        edgesCreated += buildCoOccurrenceEdges(agentId, keyToEntry);
+
         // Step 5: 更新 consolidation_task 状态 (JdbcTemplate + completed_at)
         markTaskCompleted(taskId, entriesProcessed, edgesCreated);
+    }
+
+    /**
+     * 标签共现图谱: 同批 entries 中共享至少一个 tag 的两两建 relation_type='co_occurs' 边;
+     * 重复共现时 weight += 1 (赫布: 共同激活→连接增强)。规范化 src<tgt 避免正反向重复。
+     */
+    private int buildCoOccurrenceEdges(String agentId, Map<String, MemoryEntry> keyToEntry) {
+        // tag -> entries 反向索引
+        Map<String, java.util.List<MemoryEntry>> tagToEntries = new HashMap<>();
+        for (MemoryEntry e : keyToEntry.values()) {
+            if (e.getId() == null || e.getTags() == null) {
+                continue;
+            }
+            for (String tag : e.getTags()) {
+                if (tag == null || tag.isBlank()) {
+                    continue;
+                }
+                tagToEntries.computeIfAbsent(tag, k -> new java.util.ArrayList<>()).add(e);
+            }
+        }
+        java.util.Set<String> built = new java.util.HashSet<>();
+        int count = 0;
+        for (java.util.List<MemoryEntry> group : tagToEntries.values()) {
+            for (int i = 0; i < group.size(); i++) {
+                for (int j = i + 1; j < group.size(); j++) {
+                    MemoryEntry a = group.get(i);
+                    MemoryEntry b = group.get(j);
+                    long srcId = Math.min(a.getId(), b.getId());
+                    long tgtId = Math.max(a.getId(), b.getId());
+                    String pairKey = srcId + ":" + tgtId;
+                    if (!built.add(pairKey)) {
+                        continue;  // 同批同一对只建一次
+                    }
+                    try {
+                        jdbcTemplate.update(
+                                "INSERT INTO memory_graph(source_entry_id, target_entry_id, agent_id, relation_type, weight) " +
+                                "VALUES (?, ?, ?, 'co_occurs', 1.0) " +
+                                "ON CONFLICT (source_entry_id, target_entry_id, relation_type, agent_id) " +
+                                "DO UPDATE SET weight = memory_graph.weight + 1",
+                                srcId, tgtId, agentId);
+                        count++;
+                    } catch (Exception e) {
+                        log.warn("insert co_occurs edge failed ({}→{}): {}", srcId, tgtId, e.getMessage());
+                    }
+                }
+            }
+        }
+        return count;
     }
 
     /** 标记任务完成 (JdbcTemplate + completed_at)。 */

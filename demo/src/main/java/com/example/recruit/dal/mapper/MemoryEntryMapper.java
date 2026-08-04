@@ -33,12 +33,37 @@ public interface MemoryEntryMapper extends BaseMapper<MemoryEntry> {
                                       @Param("keyword") String keyword);
 
     /**
-     * 对低重要性且长期未更新的记忆应用衰减因子。
+     * 批量续期: 命中检索的记忆 access_count+1、刷新 last_access, 并按艾宾浩斯留存曲线重算 ttl_expires_at。
+     *
+     * <p>eff_half_live(baseTtlSeconds) = halfLifeDays * ln(1/forgetThreshold) * 86400 (Java 侧预算),
+     * 再乘 (1 + kImportance*importance + kAccess*min(accessCount,10)/10); 硬下限 created_at + minRetention。
+     * 一条 SQL 原子完成, 避免并发丢失。
      */
-    @Update("UPDATE memory_entry SET importance = importance * #{factor} WHERE agent_id = #{agentId} AND importance &lt; 0.7 AND updated_at < #{cutoff}")
-    int applyDecay(@Param("agentId") String agentId,
-                   @Param("factor") double factor,
-                   @Param("cutoff") LocalDateTime cutoff);
+    @Update("<script>" +
+            "UPDATE memory_entry SET " +
+            "access_count = access_count + 1, " +
+            "last_access = NOW(), " +
+            "ttl_expires_at = GREATEST(" +
+            "  NOW() + (#{baseTtlSeconds} * (1 + #{kImportance} * COALESCE(importance, 0.5) " +
+            "    + #{kAccess} * LEAST(COALESCE(access_count, 0), 10) / 10.0)) * INTERVAL '1 second', " +
+            "  COALESCE(created_at, NOW()) + #{minRetentionSeconds} * INTERVAL '1 second' " +
+            ") " +
+            "WHERE id IN " +
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>" +
+            "</script>")
+    int renewAccess(@Param("ids") List<Long> ids,
+                    @Param("baseTtlSeconds") double baseTtlSeconds,
+                    @Param("kImportance") double kImportance,
+                    @Param("kAccess") double kAccess,
+                    @Param("minRetentionSeconds") long minRetentionSeconds);
+
+    /**
+     * TTL 清扫: 删除已过 TTL 且未被高重要度保护的记忆。
+     */
+    @Delete("DELETE FROM memory_entry " +
+            "WHERE ttl_expires_at IS NOT NULL AND ttl_expires_at < NOW() " +
+            "AND (importance IS NULL OR importance < #{protectThreshold})")
+    int deleteExpired(@Param("protectThreshold") double protectThreshold);
 
     /**
      * 将低于阈值的记忆归档为 archived。

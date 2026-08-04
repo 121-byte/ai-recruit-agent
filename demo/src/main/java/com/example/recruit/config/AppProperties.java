@@ -28,6 +28,7 @@ public class AppProperties {
     private Langfuse langfuse = new Langfuse();
     private Fileparser fileparser = new Fileparser();
     private Intent intent = new Intent();
+    private Memory memory = new Memory();
 
     /** app.mock.enabled 嵌套配置。 */
     @Data
@@ -93,6 +94,62 @@ public class AppProperties {
             private String flushIntervalCron = "0 */5 * * * *";
             /** 每类意图动态锚点上限 (超出按最久未命中淘汰)。 */
             private int maxPerType = 200;
+        }
+    }
+
+    /**
+     * app.memory.* 记忆生命周期配置 (绑定 app.memory.*)。
+     *
+     * <p>对齐 hebb-mind 艾宾浩斯留存曲线遗忘模型:
+     * <pre>
+     * eff_half_life = halfLifeDays * (1 + kImportance * importance + kAccess * min(accessCount,10)/10)
+     * ttlExpiresAt  = lastAccess + eff_half_life * ln(1 / forgetThreshold)
+     * 清扫: DELETE WHERE ttl_expires_at &lt; NOW() AND importance &lt; protectThreshold
+     * 硬下限: ttlExpiresAt &gt;= createdAt + minRetentionDays
+     * </pre>
+     */
+    @Data
+    public static class Memory {
+        /** 基础半衰期 (天): 一条中性记忆闲置这么多天后留存率衰减到约 37%。 */
+        private double halfLifeDays = 60.0;
+        /** 重要度对半衰期的拉长权重 (importance 0-1)。 */
+        private double kImportance = 2.0;
+        /** 访问次数对半衰期的拉长权重 (access_count 归一化为 min(n,10)/10)。 */
+        private double kAccess = 1.5;
+        /** 留存率低于此值即遗忘 (0-1)。 */
+        private double forgetThreshold = 0.3;
+        /** 任何记忆留存寿命的硬下限 (天), 防止瞬间删除。 */
+        private int minRetentionDays = 1;
+        /** 高重要度保护线: importance &gt;= 此值的记忆即使 TTL 到期也不被清扫删除。 */
+        private double protectThreshold = 0.7;
+        /** TTL 清扫 cron (注: @Scheduled 不读属性, 此值供 SchedulingConfigurer 后续动态化, 当前 cron 仍注解硬编码)。 */
+        private String forgetCron = "0 30 3 * * *";
+        /** 每 agent 活跃记忆容量上限 (超出按最低 importance LRU 删除)。 */
+        private int maxPerUser = 200;
+
+        /**
+         * 计算有效半衰期 (天)。
+         *
+         * @param importance 0-1, null 视为 0.5
+         * @param accessCount 访问次数, null 视为 0
+         */
+        public double effectiveHalfLife(Double importance, Integer accessCount) {
+            double imp = importance == null ? 0.5 : importance;
+            int acc = accessCount == null ? 0 : Math.min(accessCount, 10);
+            return halfLifeDays * (1.0 + kImportance * imp + kAccess * (acc / 10.0));
+        }
+
+        /**
+         * 计算给定 importance/accessCount 下的 TTL 过期点 (从基准时间起)。
+         * ttl = base + eff_half_life * ln(1/forgetThreshold), 不早于 base + minRetentionDays。
+         */
+        public java.time.LocalDateTime computeTtl(java.time.LocalDateTime base,
+                                                  Double importance, Integer accessCount) {
+            double eff = effectiveHalfLife(importance, accessCount);
+            long ttlSeconds = (long) (eff * Math.log(1.0 / forgetThreshold) * 24 * 3600);
+            long minSeconds = (long) minRetentionDays * 24 * 3600L;
+            long seconds = Math.max(ttlSeconds, minSeconds);
+            return base.plusSeconds(seconds);
         }
     }
 

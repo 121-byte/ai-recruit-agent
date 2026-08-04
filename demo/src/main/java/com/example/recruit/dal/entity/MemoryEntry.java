@@ -44,6 +44,9 @@ public class MemoryEntry {
     @TableField(typeHandler = FloatVectorTypeHandler.class)
     private float[] embedding;
 
+    /** 动态 TTL 过期点: last_access + eff_half_life * ln(1/forget_threshold); 为空表示尚未预算 */
+    private LocalDateTime ttlExpiresAt;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
