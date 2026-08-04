@@ -200,7 +200,9 @@ public class HybridMemoryRetriever {
                 "last_access, importance, embedding, created_at, updated_at, " +
                 "1 - (embedding <=> ?::vector) AS similarity " +
                 "FROM memory_entry WHERE agent_id = ? AND category != 'archived' " +
-                "AND embedding IS NOT NULL ORDER BY embedding <=> ?::vector LIMIT 10";
+                "AND embedding IS NOT NULL " +
+                "AND (ttl_expires_at IS NULL OR ttl_expires_at > NOW()) " +
+                "ORDER BY embedding <=> ?::vector LIMIT 10";
         try {
             return jdbcTemplate.query(sql,
                     (rs, rowNum) -> mapScoredMemory(rs, "vector"),
@@ -278,7 +280,7 @@ public class HybridMemoryRetriever {
             return Collections.emptyList();
         }
 
-        // 批量加载关联记忆, 过滤非本人/已归档
+        // 批量加载关联记忆, 过滤非本人/已归档/已过期
         List<MemoryEntry> related = memoryEntryMapper.selectBatchIds(relatedWeights.keySet());
         List<ScoredMemory> result = new ArrayList<>();
         for (MemoryEntry e : related) {
@@ -287,12 +289,20 @@ public class HybridMemoryRetriever {
             if (!agentId.equals(e.getAgentId())) continue;
             // 过滤已归档
             if ("archived".equals(e.getCategory())) continue;
+            // 过滤 TTL 已过期 (对齐 Hebb: 检索时不可见, 也不被续期复活)
+            if (isExpired(e)) continue;
             // 过滤已在 seed 中的
             if (seeds.contains(e.getId())) continue;
             double w = relatedWeights.getOrDefault(e.getId(), 0.5);
             result.add(new ScoredMemory(e, w, "graph"));
         }
         return result;
+    }
+
+    /** TTL 已过期判定: ttl_expires_at 早于当前时刻 (null 视为未预算, 未过期)。 */
+    private boolean isExpired(MemoryEntry e) {
+        return e.getTtlExpiresAt() != null
+                && e.getTtlExpiresAt().isBefore(LocalDateTime.now());
     }
 
     // ─────────────────── 融合与加权 ───────────────────
