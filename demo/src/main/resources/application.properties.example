@@ -77,6 +77,12 @@ app.langfuse.secret-key=
 app.web-search.api-key=YOUR_TAVILY_API_KEY
 app.web-search.base-url=https://api.tavily.com
 
+# ─── Intent 动态锚点自学习 (默认关闭, 灰度开启) ───
+app.intent.dynamic-anchor.enabled=false
+app.intent.dynamic-anchor.dedup-threshold=0.90
+app.intent.dynamic-anchor.flush-interval-cron=0 */5 * * * *
+app.intent.dynamic-anchor.max-per-type=200
+
 # ─── Sa-Token ───
 sa-token.token-name=satoken
 sa-token.timeout=7200

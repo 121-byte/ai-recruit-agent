@@ -27,6 +27,7 @@ public class AppProperties {
     private WebSearch webSearch = new WebSearch();
     private Langfuse langfuse = new Langfuse();
     private Fileparser fileparser = new Fileparser();
+    private Intent intent = new Intent();
 
     /** app.mock.enabled 嵌套配置。 */
     @Data
@@ -75,6 +76,24 @@ public class AppProperties {
     public static class Fileparser {
         private String pythonCommand = "python3";
         private String scriptPath = "scripts/parse_resume.py";
+    }
+
+    /** app.intent.* 意图路由相关配置。 */
+    @Data
+    public static class Intent {
+        private DynamicAnchor dynamicAnchor = new DynamicAnchor();
+
+        /** 意图动态锚点自学习 (绑定 app.intent.dynamic-anchor.*)。默认关闭, 灰度开启。 */
+        @Data
+        public static class DynamicAnchor {
+            private boolean enabled = false;
+            /** 同桶语义去重阈值 (cosine ≥ 此值视为重复)。 */
+            private double dedupThreshold = 0.90;
+            /** 定时 flush 的 cron (默认每 5 分钟)。 */
+            private String flushIntervalCron = "0 */5 * * * *";
+            /** 每类意图动态锚点上限 (超出按最久未命中淘汰)。 */
+            private int maxPerType = 200;
+        }
     }
 
     /** 是否启用 Mock 降级：缺 key 或显式开启都视为 true。 */
