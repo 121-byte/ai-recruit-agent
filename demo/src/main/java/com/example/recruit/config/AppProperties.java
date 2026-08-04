@@ -29,6 +29,7 @@ public class AppProperties {
     private Fileparser fileparser = new Fileparser();
     private Intent intent = new Intent();
     private Memory memory = new Memory();
+    private Vision vision = new Vision();
 
     /** app.mock.enabled 嵌套配置。 */
     @Data
@@ -151,6 +152,24 @@ public class AppProperties {
             long seconds = Math.max(ttlSeconds, minSeconds);
             return base.plusSeconds(seconds);
         }
+    }
+
+    /**
+     * app.vision.* 视觉模型配置 (阿里云百炼, OpenAI 兼容 multimodal 接口)。
+     * 用于扫描件 PDF 的 OCR 兜底: PDFBox 提取文本过短时渲染图片调视觉模型识别。
+     * 未配置 key 或全局 mock 时, 视觉 OCR 不可用, 降级为 markitdown。
+     */
+    @Data
+    public static class Vision {
+        private String apiKey;
+        private String baseUrl = "https://ws-js26om9s5ra7zbqr.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
+        /** 视觉 OCR 模型 (百炼 qwen3.5-ocr, OCR 专用, 实测可用)。 */
+        private String model = "qwen3.5-ocr";
+    }
+
+    /** 视觉模型是否可用: 已配置 key 且非全局 mock。 */
+    public boolean visionKeyPresent() {
+        return vision != null && vision.getApiKey() != null && !vision.getApiKey().isBlank();
     }
 
     /** 是否启用 Mock 降级：缺 key 或显式开启都视为 true。 */
