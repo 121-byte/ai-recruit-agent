@@ -53,6 +53,10 @@ public class AutoMemoryExtractor {
             "|(reveal|show|print|repeat).{0,10}(system\\s+prompt|initial\\s+instruction)" +
             // 3. 切换角色
             "|(you\\s+are\\s+(now|a\\s+new)|new\\s+instruction|act\\s+as\\s+if)" +
+            // 4. 中文越狱措辞
+            "|(忽略|无视|不要遵守|跳过)(以上|上面|之前|先前|所有)?(指令|规则|提示|要求|设定)" +
+            "|(现在|请)(扮演|充当|成为|模拟).*(角色|没有限制|无限制|不受限)" +
+            "|(输出|显示|泄露|告诉我)(你的)?(系统提示|提示词|初始指令)" +
             ")"
     );
 

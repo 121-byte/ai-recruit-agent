@@ -33,7 +33,12 @@ public class ConversationGuardrail implements MiddlewareBase {
             "(?i)(ignore|disregard|forget).*(previous|above|system).*(instruction|prompt|rule)|" +
             "(?i)you\\s+are\\s+(now|no\\s+longer)|" +
             "(?i)(reveal|show|print).*(system|hidden|secret).*(prompt|instruction)|" +
-            "(?i)act\\s+as\\s+(if\\s+you\\s+have\\s+no|without).*(rule|restriction|guardrail)");
+            "(?i)act\\s+as\\s+(if\\s+you\\s+have\\s+no|without).*(rule|restriction|guardrail)|" +
+            // 中文越狱措辞
+            "(忽略|无视|不要遵守|跳过| disregard)(以上|上面|之前|先前|所有)?(指令|规则|提示|要求|设定|限制)|" +
+            "(现在|从现在起|请)(扮演|充当|成为|模拟).*(角色|助手|没有限制|无限制|不受限)|" +
+            "(输出|显示|泄露|告诉我|重复)(你的|系统)?(系统提示|提示词|初始指令|system prompt)|" +
+            "(不要|不受|解除)(遵守|限制|约束|护栏)");
 
     // ─── 招聘偏见检测 (文档 §7.1) ───
     private static final Pattern BIAS_INPUT = Pattern.compile(
