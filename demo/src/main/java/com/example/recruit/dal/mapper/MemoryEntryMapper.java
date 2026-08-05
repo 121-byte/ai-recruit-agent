@@ -26,10 +26,13 @@ public interface MemoryEntryMapper extends BaseMapper<MemoryEntry> {
                                     @Param("topK") int topK);
 
     /**
-     * 按关键词模糊检索记忆 (ILIKE), 过滤 TTL 已过期 (对齐 Hebb: 检索时不可见)。
+     * 按关键词模糊检索记忆 (ILIKE), 覆盖 key/value/tags, 过滤 TTL 已过期 (对齐 Hebb: 检索时不可见)。
      */
-    @Select("SELECT * FROM memory_entry WHERE agent_id = #{agentId} AND memory_value ILIKE '%' || #{keyword} || '%' " +
-            "AND (ttl_expires_at IS NULL OR ttl_expires_at > NOW()) LIMIT 10")
+    @Select("SELECT * FROM memory_entry WHERE agent_id = #{agentId} AND category != 'archived' " +
+            "AND (ttl_expires_at IS NULL OR ttl_expires_at > NOW()) " +
+            "AND (memory_key ILIKE '%' || #{keyword} || '%' " +
+            "OR memory_value ILIKE '%' || #{keyword} || '%' " +
+            "OR array_to_string(tags, ',') ILIKE '%' || #{keyword} || '%') LIMIT 10")
     List<MemoryEntry> searchByKeyword(@Param("agentId") String agentId,
                                       @Param("keyword") String keyword);
 

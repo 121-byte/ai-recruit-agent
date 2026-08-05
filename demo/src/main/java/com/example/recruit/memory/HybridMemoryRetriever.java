@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,7 +41,7 @@ import java.util.stream.Collectors;
  *   <li>graphWalk 改 batch UNION SQL (正反向一次查)</li>
  *   <li>recencyFactor 优先 lastAccess 回退 updatedAt</li>
  *   <li>importanceFactor ≥0.7→1.5/≤0.3→0.5/else 1.0</li>
- *   <li>RRF k=60; 记忆&gt;5 时调 rerankService.rerank(query, memoryTexts, 5) 取 Top5</li>
+ *   <li>RRF k=60; 记忆&gt;5 时调记忆专用 rerank 取 Top5</li>
  *   <li>缓存 key = agentId + ":" + query</li>
  * </ul>
  */
@@ -53,6 +54,10 @@ public class HybridMemoryRetriever {
     private static final double RECENCY_HALF_LIFE_DAYS = 30.0;
     private static final int RRF_K = 60;
     private static final int RERANK_TOP = 5;
+    private static final List<String> KEYWORD_STOP_TERMS = List.of(
+            "有哪些", "怎么样", "以及", "哪些", "什么", "的", "和", "与", "及",
+            "情况", "候选人", "岗位", "要求", "方向", "经验", "项目", "背景",
+            "相关", "负责", "参与", "会用");
 
     /** 命中记录：cacheKey = agentId + ":" + query。 */
     private static final ThreadLocal<Map<String, List<ScoredMemory>>> CACHE =
@@ -84,6 +89,7 @@ public class HybridMemoryRetriever {
         public double rawScore;
         public double rrfScore;
         public double finalScore;
+        public double directMatchScore;
         public String source;  // vector/keyword/graph
 
         public ScoredMemory(MemoryEntry entry, double rawScore, String source) {
@@ -91,6 +97,7 @@ public class HybridMemoryRetriever {
             this.rawScore = rawScore;
             this.rrfScore = 0.0;
             this.finalScore = 0.0;
+            this.directMatchScore = 0.0;
             this.source = source;
         }
     }
@@ -99,7 +106,18 @@ public class HybridMemoryRetriever {
      * 混合检索主入口。
      */
     public List<ScoredMemory> retrieve(String agentId, String query) {
-        String cacheKey = agentId + ":" + query;
+        return retrieve(agentId, query, true);
+    }
+
+    /**
+     * 只读检索入口，供离线评估使用，避免评估运行改变 access_count / last_access / ttl。
+     */
+    public List<ScoredMemory> retrieveReadOnly(String agentId, String query) {
+        return retrieve(agentId, query, false);
+    }
+
+    private List<ScoredMemory> retrieve(String agentId, String query, boolean renewAccess) {
+        String cacheKey = (renewAccess ? "rw:" : "ro:") + agentId + ":" + query;
         List<ScoredMemory> cached = CACHE.get().get(cacheKey);
         if (cached != null) {
             return cached;
@@ -138,7 +156,7 @@ public class HybridMemoryRetriever {
                 List<String> texts = result.stream()
                         .map(sm -> sm.entry.getMemoryKey() + ": " + sm.entry.getMemoryValue())
                         .collect(Collectors.toList());
-                List<Integer> rerankIndices = rerankService.rerank(query, texts, RERANK_TOP);
+                List<Integer> rerankIndices = rerankService.rerankMemory(query, texts, RERANK_TOP);
                 List<ScoredMemory> reranked = new ArrayList<>();
                 for (int idx : rerankIndices) {
                     if (idx >= 0 && idx < result.size()) {
@@ -152,9 +170,12 @@ public class HybridMemoryRetriever {
                 result = result.subList(0, Math.min(RERANK_TOP, result.size()));
             }
         }
+        result = applyFinalDirectMatchThreshold(query, result);
 
-        // 检索命中续期: 批量 access_count+1 / last_access / ttl_expires_at (艾宾浩斯留存曲线, 一次 UPDATE)
-        renewAccessForHits(result);
+        if (renewAccess) {
+            // 检索命中续期: 批量 access_count+1 / last_access / ttl_expires_at (艾宾浩斯留存曲线, 一次 UPDATE)
+            renewAccessForHits(result);
+        }
 
         CACHE.get().put(cacheKey, result);
         return result;
@@ -196,38 +217,180 @@ public class HybridMemoryRetriever {
      */
     private List<ScoredMemory> vectorSearch(String agentId, String query, float[] queryVector) {
         String literal = FloatVectorTypeHandler.literal(queryVector);
+        double minSimilarity = appProperties.getMemory().getVectorMinSimilarity();
         String sql = "SELECT id, agent_id, memory_key, memory_value, category, tags, access_count, " +
                 "last_access, importance, embedding, created_at, updated_at, " +
                 "1 - (embedding <=> ?::vector) AS similarity " +
                 "FROM memory_entry WHERE agent_id = ? AND category != 'archived' " +
                 "AND embedding IS NOT NULL " +
                 "AND (ttl_expires_at IS NULL OR ttl_expires_at > NOW()) " +
+                "AND (? <= 0 OR 1 - (embedding <=> ?::vector) >= ?) " +
                 "ORDER BY embedding <=> ?::vector LIMIT 10";
         try {
             return jdbcTemplate.query(sql,
                     (rs, rowNum) -> mapScoredMemory(rs, "vector"),
-                    literal, agentId, literal);
+                    literal, agentId, minSimilarity, literal, minSimilarity, literal);
         } catch (Exception e) {
             log.debug("vectorSearch failed (agent={}): {}", agentId, e.getMessage());
             return Collections.emptyList();
         }
     }
 
-    /** 关键词检索: 过滤 archived; rawScore=0.5。 */
+    /** 关键词检索: 对 query 做轻量拆词, 覆盖 key/value/tags, rawScore=0.5。 */
     private List<ScoredMemory> keywordSearch(String agentId, String query) {
         try {
-            List<MemoryEntry> entries = memoryEntryMapper.searchByKeyword(agentId, query);
-            List<ScoredMemory> result = new ArrayList<>();
-            for (MemoryEntry e : entries) {
-                if (e.getCategory() != null && "archived".equals(e.getCategory())) {
-                    continue;  // 过滤 archived
+            Map<Long, ScoredMemory> result = new LinkedHashMap<>();
+            for (String keyword : keywordQueries(query)) {
+                List<MemoryEntry> entries = memoryEntryMapper.searchByKeyword(agentId, keyword);
+                for (MemoryEntry e : entries) {
+                    if (e.getId() == null || result.containsKey(e.getId())) {
+                        continue;
+                    }
+                    result.put(e.getId(), new ScoredMemory(e, 0.5, "keyword"));
                 }
-                result.add(new ScoredMemory(e, 0.5, "keyword"));
             }
-            return result;
+            return new ArrayList<>(result.values());
         } catch (Exception e) {
             log.debug("keywordSearch failed (agent={}): {}", agentId, e.getMessage());
             return Collections.emptyList();
+        }
+    }
+
+    private List<String> keywordQueries(String query) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<String> keywords = new LinkedHashSet<>();
+        addKeyword(keywords, query.trim());
+
+        String segmented = query.trim();
+        for (String term : KEYWORD_STOP_TERMS) {
+            segmented = segmented.replace(term, " ");
+        }
+        segmented = segmented.replaceAll("[^\\p{IsHan}A-Za-z0-9+#.]+", " ");
+        for (String token : segmented.split("\\s+")) {
+            addKeyword(keywords, token);
+        }
+        return new ArrayList<>(keywords);
+    }
+
+    private void addKeyword(Set<String> keywords, String keyword) {
+        if (keyword == null) {
+            return;
+        }
+        String trimmed = keyword.trim();
+        if (trimmed.length() >= 2 && !KEYWORD_STOP_TERMS.contains(trimmed)) {
+            keywords.add(trimmed);
+        }
+    }
+
+    private List<ScoredMemory> applyFinalDirectMatchThreshold(String query, List<ScoredMemory> result) {
+        double minScore = appProperties.getMemory().getFinalMinDirectMatchScore();
+        if (minScore <= 0 || result.isEmpty()) {
+            return result;
+        }
+        List<String> terms = directMatchTerms(query);
+        QuerySlot slot = detectSlot(query);
+        List<ScoredMemory> filtered = new ArrayList<>();
+        for (ScoredMemory sm : result) {
+            sm.directMatchScore = directMatchScore(sm, terms, slot);
+            if (sm.directMatchScore >= minScore) {
+                filtered.add(sm);
+            }
+        }
+        return filtered;
+    }
+
+    private List<String> directMatchTerms(String query) {
+        List<String> terms = keywordQueries(query).stream()
+                .filter(term -> !KEYWORD_STOP_TERMS.contains(term))
+                .filter(term -> term.length() >= 2)
+                .toList();
+        if (terms.size() <= 1) {
+            return terms;
+        }
+        String original = query == null ? "" : query.trim();
+        return terms.stream()
+                .filter(term -> !term.equals(original))
+                .toList();
+    }
+
+    private double directMatchScore(ScoredMemory sm, List<String> terms, QuerySlot slot) {
+        String text = searchableText(sm.entry);
+        double termScore = 0.0;
+        if (!terms.isEmpty()) {
+            long matches = terms.stream().filter(text::contains).count();
+            termScore = (double) matches / terms.size();
+        }
+        double slotScore = slot.matches(text) ? 1.0 : 0.0;
+        double sourceScore = sm.source != null && sm.source.contains("keyword") ? 0.1 : 0.0;
+        return Math.min(1.0, termScore * 0.6 + slotScore * 0.4 + sourceScore);
+    }
+
+    private String searchableText(MemoryEntry entry) {
+        if (entry == null) {
+            return "";
+        }
+        String tags = entry.getTags() == null ? "" : String.join(",", entry.getTags());
+        return String.join(" ",
+                nullToEmpty(entry.getMemoryKey()),
+                nullToEmpty(entry.getMemoryValue()),
+                tags);
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private QuerySlot detectSlot(String query) {
+        String q = query == null ? "" : query;
+        if (containsAny(q, "技术栈", "技术能力", "技能", "会用")) {
+            return new QuerySlot("techstack", List.of("techstack", "技术栈", "技术能力", "技能", "熟悉", "精通"));
+        }
+        if (containsAny(q, "年以上", "年经验", "工作年限", "年限")) {
+            return new QuerySlot("years", List.of("candidate:", "年经验", "年,", "年，", "年以上"));
+        }
+        if (containsAny(q, "项目", "系统", "负责", "参与")) {
+            return new QuerySlot("project", List.of("project", "项目", "系统", "负责", "参与", "主导"));
+        }
+        if (containsAny(q, "面试", "面评")) {
+            return new QuerySlot("interview", List.of("interview", "面试", "面评"));
+        }
+        if (containsAny(q, "offer", "薪资", "入职", "录用")) {
+            return new QuerySlot("offer", List.of("offer", "薪资", "入职", "录用"));
+        }
+        if (containsAny(q, "教育", "学历", "学校", "专业", "本科", "专科")) {
+            return new QuerySlot("education", List.of("education", "教育", "学历", "学校", "专业", "本科", "专科"));
+        }
+        if (containsAny(q, "岗位要求", "岗位需求", "要求", "需求")) {
+            return new QuerySlot("requirement", List.of("req", "岗位要求", "岗位需求", "要求", "需求"));
+        }
+        if (containsAny(q, "人才分层", "分层")) {
+            return new QuerySlot("talent-tier", List.of("talent-tier", "人才分层", "分层"));
+        }
+        if (containsAny(q, "候选人", "人才库", "推荐")) {
+            return new QuerySlot("candidate", List.of("candidate:", "人才库", "候选人", "推荐"));
+        }
+        return QuerySlot.NONE;
+    }
+
+    private boolean containsAny(String text, String... terms) {
+        for (String term : terms) {
+            if (text.contains(term)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private record QuerySlot(String name, List<String> aliases) {
+        static final QuerySlot NONE = new QuerySlot("none", List.of());
+
+        boolean matches(String text) {
+            if (this == NONE) {
+                return false;
+            }
+            return aliases.stream().anyMatch(text::contains);
         }
     }
 
@@ -323,6 +486,12 @@ public class HybridMemoryRetriever {
                     merged.put(sm.entry.getId(), sm);
                 } else {
                     existing.rrfScore += 1.0 / (RRF_K + rank + 1);
+                    // 累加命中路径: 同一记忆被多路召回时, source 标记所有贡献路径 (vector+keyword+graph),
+                    // 避免先入为主把 keyword/graph 的贡献遮蔽 (评估三路占比此前 keyword 恒 0%)。
+                    if (sm.source != null && !sm.source.isEmpty()
+                            && !existing.source.contains(sm.source)) {
+                        existing.source = existing.source + "+" + sm.source;
+                    }
                 }
             }
         }

@@ -127,6 +127,10 @@ public class AppProperties {
         private String forgetCron = "0 30 3 * * *";
         /** 每 agent 活跃记忆容量上限 (超出按最低 importance LRU 删除)。 */
         private int maxPerUser = 200;
+        /** 向量召回最低相似度; 0 表示不启用阈值。 */
+        private double vectorMinSimilarity = 0.0;
+        /** 最终返回最低直接支持度; 0 表示不启用阈值。 */
+        private double finalMinDirectMatchScore = 0.0;
 
         /**
          * 计算有效半衰期 (天)。

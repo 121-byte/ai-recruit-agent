@@ -31,6 +31,7 @@ public class RerankService {
 
     private static final String RERANK_PATH = "/api/v1/services/rerank/text-rerank/text-rerank";
     private static final String INSTRUCT = "根据岗位需求，按技术技能匹配度和相关工作经验对候选人简历排序";
+    private static final String MEMORY_INSTRUCT = "根据用户查询，优先选择能直接回答问题的记忆，兼顾人物、项目、岗位、时间、偏好和面试状态的一致性";
     private static final int MAX_DOC_CHARS = 800;
 
     private final AppProperties props;
@@ -55,7 +56,17 @@ public class RerankService {
                 .toList();
     }
 
+    public List<Integer> rerankMemory(String query, List<String> documents, int topN) {
+        return rerankWithScore(query, documents, topN, MEMORY_INSTRUCT).stream()
+                .map(RerankResult::index)
+                .toList();
+    }
+
     public List<RerankResult> rerankWithScore(String query, List<String> documents, int topN) {
+        return rerankWithScore(query, documents, topN, INSTRUCT);
+    }
+
+    private List<RerankResult> rerankWithScore(String query, List<String> documents, int topN, String instruct) {
         if (documents == null || documents.isEmpty()) {
             return List.of();
         }
@@ -71,7 +82,7 @@ public class RerankService {
 
             ObjectNode input = requestBody.putObject("input");
             input.put("query", query == null ? "" : query);
-            input.put("instruct", INSTRUCT);
+            input.put("instruct", instruct);
 
             ArrayNode docs = input.putArray("documents");
             for (String document : documents) {
