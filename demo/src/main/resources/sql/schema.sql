@@ -107,7 +107,8 @@ CREATE INDEX IF NOT EXISTS idx_memory_agent    ON memory_entry (agent_id);
 CREATE INDEX IF NOT EXISTS idx_memory_category ON memory_entry (agent_id, category);
 CREATE INDEX IF NOT EXISTS idx_memory_embedding ON memory_entry USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_memory_value_trgm ON memory_entry USING gin (memory_value gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS idx_memory_ttl ON memory_entry (ttl_expires_at);
+-- idx_memory_ttl 不在此处建: ttl_expires_at 列由文末幂等 ALTER 补加, 存量库此时该列尚不存在;
+-- 对应 CREATE INDEX 统一放到 ALTER 之后 (见文末), 新库与存量库均成立。
 
 -- ─────────────────── 3.1.5 memory_graph 记忆图谱边表 ───────────────────
 CREATE TABLE IF NOT EXISTS memory_graph (
