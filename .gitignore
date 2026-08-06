@@ -19,7 +19,7 @@ demo/logs/
 demo/workspace/
 demo/.agentscope/
 demo/data/intent-anchors.json
-demo/eval-reports/
+# demo/eval-reports/  # 评估报告纳入版本控制
 *.log
 
 # 密钥 / 本地配置 (不提交真实密钥)
