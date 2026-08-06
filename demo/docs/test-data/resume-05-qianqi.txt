@@ -1,0 +1,31 @@
+钱七
+手机: 13500003333
+邮箱: qianqi@example.com
+求职意向: 前端工程师
+
+教育经历
+2017.09 - 2021.06  某二本院校  软件工程  本科
+
+技能
+熟悉 Vue, React
+了解 Java, Spring Boot
+了解 MySQL 基础
+了解 HTML/CSS/JavaScript
+
+工作经历
+2021.07 - 至今  某 SaaS 公司  前端工程师
+- 负责管理后台前端开发 (Vue3 / React)
+- 使用 Spring Boot 开发部分 BFF 接口
+- MySQL 简单业务表设计
+- 与后端协作联调
+
+项目经历
+项目一: 数据可视化大屏
+角色: 前端开发
+技术栈: Vue3, ECharts
+描述: 实现业务数据可视化大屏, 实时刷新。
+
+项目二: 中后台管理系统
+角色: 前端开发
+技术栈: React, Ant Design, Spring Boot
+描述: 中后台系统前端, 配套少量 BFF 接口。

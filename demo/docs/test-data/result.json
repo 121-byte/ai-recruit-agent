@@ -1,0 +1,757 @@
+{
+  "code": 200,
+  "message": "OK",
+  "data": {
+    "job_id": 2,
+    "job_title": "Java后端工程师",
+    "candidate_count": 7,
+    "recall_count": 7,
+    "position_filters": [
+      "Java",
+      "后端"
+    ],
+    "rerank_query": "岗位: Java后端工程师 部门: 技术中心 职级: 高级 地点: 北京 年限要求: 3-5年 学历要求: 本科 JD: 岗位：Java 后端工程师（高级） 部门：技术中心 地点：北京 薪资：25K-45K 经验：3-5 年 学历：本科及以上 招聘人数：2 岗位职责： 1. 负责公司核心交易系统后端服务的设计与开发，参与高并发场景下的系统架构演进。 2. 参与系统性能优化与重构，定位并解决线上稳定性问题。 3. 与前端、产品、测试协作，推进需求从设计到上线交付。 4. 参与代码评审与技术方案评审，提升团队工程质量。 任职要求： 1. 本科及以上学历，计算机相关专业。 2. 3-5 年 Java 后端开发经验，基础扎实。 3. 精通 Java、Spring Boot、MyBatis，熟悉 JVM 调优与并发编程。 4. 熟悉 MySQL 数据库设计与优化，了解分库分表。 5. 熟悉 Redis 缓存、消息队列（Kafka / RabbitMQ）。 6. 有微服务架构（Spring Cloud）实战经验。 7. 了解分布式事务、分布式锁、限流降级、熔断等高可用手段。 8. 有交易、支付、金融系统经验者优先。 9. 良好的沟通与协作能力，有责任感。",
+    "candidates": [
+      {
+        "rank": 1,
+        "resume_id": 7,
+        "name": "张三",
+        "overall_score": 86.82,
+        "skill_score": 92.0,
+        "experience_score": 80.0,
+        "soft_score": 72.0,
+        "vector_score": 74.1,
+        "project_score": 95.0,
+        "rerank_score": 92.15,
+        "decision_tier": "STRONG_RECOMMEND",
+        "interview_id": 4,
+        "summary": "候选人张三技术底蕴深厚，核心交易系统、支付清结算等金融项目经验与岗位高度契合，技术栈覆盖全面，量化成果突出。但8年经验超出岗位3-5年要求，存在过拟合和稳定性风险；且沟通协作、熔断实践等细节有待面试确认。整体匹配度很高，建议面试重点考察软素质、稳定性预期及高可用完整度。",
+        "match_details": {
+          "version": "hybrid-ranking-v2-lite",
+          "candidateName": "张三",
+          "jobTitle": "Java后端工程师",
+          "summary": "候选人张三技术底蕴深厚，核心交易系统、支付清结算等金融项目经验与岗位高度契合，技术栈覆盖全面，量化成果突出。但8年经验超出岗位3-5年要求，存在过拟合和稳定性风险；且沟通协作、熔断实践等细节有待面试确认。整体匹配度很高，建议面试重点考察软素质、稳定性预期及高可用完整度。",
+          "reason": "候选人张三技术底蕴深厚，核心交易系统、支付清结算等金融项目经验与岗位高度契合，技术栈覆盖全面，量化成果突出。但8年经验超出岗位3-5年要求，存在过拟合和稳定性风险；且沟通协作、熔断实践等细节有待面试确认。整体匹配度很高，建议面试重点考察软素质、稳定性预期及高可用完整度。",
+          "scoreBreakdown": {
+            "skillScore": 92.0,
+            "experienceScore": 80.0,
+            "projectScore": 95.0,
+            "softScore": 72.0,
+            "vectorScore": 74.1,
+            "rerankScore": 92.15,
+            "finalScore": 86.82
+          },
+          "retrieval": {
+            "vectorRank": 6,
+            "vectorScore": 74.1,
+            "candidateEvidence": "候选人: 张三 意向岗位: 技术 年限: 8年 学历: 本科 学校: 北京邮电大学 专业: 计算机科学与技术 简历原文: 张三 手机: 13812345678 邮箱: zhangsan@example.com 求职意向: Java后端工程师 教育经历 2014.09 - 2018.06 北京邮电大学 计算机科学与技术 本科 技能 精通 Java, 熟悉 JVM 调优与并发编程 精通 Spring Boot, MyBatis 熟悉 MySQL 数据库设计与优化, 分库分表 熟悉 Redis 缓存, Kafka 消息队列 熟悉 Spring Cloud 微服务架构 了解分布式事务, 分布式锁, 限流降级 工作经历 2018.07 - 至今 某金融科技公司 高级 Java 开发工程师 - 负责核心交易系统后端服务设计与开发, 日均订单千万级 - 主导 MySQL 分库分表改造, 接口性能提升 3 倍 - 引入 Redis 缓存与 Kafka 异步削峰, 系统吞吐提升 5 倍 - 推进 Spring Cloud 微服务架构演进, 将单体拆分为 15 个服务 - 参与分布式事务补偿方案设计, 保障资金一致性 项目经历 项目一: 交易撮合引擎 角色: 主力开发 技术栈: Java, Redis, Kafka, Spring Cloud 描述: 设计分布式撮合引擎, 基于 Redis 分布式锁与本地缓存结合, 支持每秒万级并发撮合, 资金零差异。 项目二: 支付清结算系统 角色: 核心开发 技术栈: Java, Spring Boot, MySQL, RabbitMQ 描述: 实现分布式事务补偿与资金核对, 日终对账零差异, 支撑日均百万笔清结算。"
+          },
+          "rerank": {
+            "rank": 1,
+            "score": 92.15,
+            "applied": true
+          },
+          "matchedPoints": [
+            {
+              "requirement": "本科及以上学历，计算机相关专业",
+              "status": "MATCH",
+              "evidence": "北京邮电大学计算机科学与技术本科"
+            },
+            {
+              "requirement": "3-5年Java后端开发经验",
+              "status": "PARTIAL",
+              "evidence": "拥有8年Java后端开发经验，年限超出岗位要求"
+            },
+            {
+              "requirement": "精通Java、Spring Boot、MyBatis，熟悉JVM调优与并发编程",
+              "status": "MATCH",
+              "evidence": "简历明确列出精通Java、Spring Boot、MyBatis，熟悉JVM调优与并发编程"
+            },
+            {
+              "requirement": "熟悉MySQL数据库设计与优化，了解分库分表",
+              "status": "MATCH",
+              "evidence": "熟悉MySQL数据库设计与优化，主导MySQL分库分表改造，接口性能提升3倍"
+            },
+            {
+              "requirement": "熟悉Redis缓存、消息队列（Kafka/RabbitMQ）",
+              "status": "MATCH",
+              "evidence": "熟悉Redis缓存和Kafka消息队列，项目中使用RabbitMQ，引入Redis与Kafka提升系统吞吐5倍"
+            },
+            {
+              "requirement": "微服务架构（Spring Cloud）实战经验",
+              "status": "MATCH",
+              "evidence": "主导Spring Cloud微服务架构演进，将单体拆分为15个服务"
+            },
+            {
+              "requirement": "了解分布式事务、分布式锁、限流降级、熔断等高可用手段",
+              "status": "PARTIAL",
+              "evidence": "明确了解分布式事务、分布式锁、限流降级，但未提及熔断"
+            },
+            {
+              "requirement": "有交易、支付、金融系统经验者优先",
+              "status": "MATCH",
+              "evidence": "在某金融科技公司负责核心交易系统，并有支付清结算系统项目经验"
+            },
+            {
+              "requirement": "良好的沟通与协作能力，有责任感",
+              "status": "PARTIAL",
+              "evidence": "简历中体现主力开发、核心开发角色，但未提供直接沟通协作证据"
+            }
+          ],
+          "gaps": [
+            {
+              "requirement": "3-5年工作经验",
+              "severity": "MEDIUM",
+              "reason": "候选人拥有8年经验，超过岗位年限上限，可能存在薪资期望过高或稳定性风险"
+            },
+            {
+              "requirement": "了解分布式事务、分布式锁、限流降级、熔断等高可用手段",
+              "severity": "LOW",
+              "reason": "简历未提及熔断，需面试确认是否了解或实践过"
+            },
+            {
+              "requirement": "良好的沟通与协作能力，有责任感",
+              "severity": "LOW",
+              "reason": "简历未直接体现团队协作和责任感，需通过面试考察"
+            }
+          ],
+          "risks": [
+            "经验超出岗位要求，可能薪资和职级期望过高，入职后稳定性存疑",
+            "未明确体现熔断降级实践经验，需确认高可用技术栈完整性",
+            "简历缺乏代码评审、跨团队协作的具体事例，软技能需进一步验证"
+          ],
+          "interviewQuestions": [
+            "请详细介绍你在交易撮合引擎中如何实现分布式锁并保障资金零差异？",
+            "你主导的MySQL分库分表改造是如何选择分片键的？遇到哪些数据迁移和一致性挑战？",
+            "你是否有熔断降级的实际实践经验？在Spring Cloud微服务中如何实现？",
+            "请举例说明你如何与前端、产品、测试协作推进需求上线，你的角色是什么？",
+            "你参与代码评审时重点审查哪些方面？如何提升团队代码质量？",
+            "你已拥有8年经验，为什么考虑此高级岗位？对薪资和职级有什么期望？"
+          ],
+          "decision": {
+            "tier": "STRONG_RECOMMEND",
+            "createInterview": true
+          }
+        }
+      },
+      {
+        "rank": 2,
+        "resume_id": 8,
+        "name": "李四",
+        "overall_score": 78.01,
+        "skill_score": 78.0,
+        "experience_score": 82.0,
+        "soft_score": 68.0,
+        "vector_score": 63.33,
+        "project_score": 78.0,
+        "rerank_score": 87.81,
+        "decision_tier": "RECOMMEND",
+        "interview_id": 5,
+        "summary": "候选人李四具备5年Java后端开发经验，武汉大学软件工程本科，长期从事电商交易系统开发，有订单中心、商品中心、库存防超卖等核心业务经历，与岗位的'核心交易系统'方向高度契合。候选人熟悉Spring Boot、MyBatis、Redis、RabbitMQ、Spring Cloud，并有性能优化成果（接口RT下降40%）。但在JVM调优、并发编程、分库分表、分布式高可用等高级要求方面证据不足，主要为'了解'或未涉及，需面试深入验证。整体匹配度较高，建议进入面试重点考察高并发场景设计能力和分布式系统实践经验。",
+        "match_details": {
+          "version": "hybrid-ranking-v2-lite",
+          "candidateName": "李四",
+          "jobTitle": "Java后端工程师",
+          "summary": "候选人李四具备5年Java后端开发经验，武汉大学软件工程本科，长期从事电商交易系统开发，有订单中心、商品中心、库存防超卖等核心业务经历，与岗位的'核心交易系统'方向高度契合。候选人熟悉Spring Boot、MyBatis、Redis、RabbitMQ、Spring Cloud，并有性能优化成果（接口RT下降40%）。但在JVM调优、并发编程、分库分表、分布式高可用等高级要求方面证据不足，主要为'了解'或未涉及，需面试深入验证。整体匹配度较高，建议进入面试重点考察高并发场景设计能力和分布式系统实践经验。",
+          "reason": "候选人李四具备5年Java后端开发经验，武汉大学软件工程本科，长期从事电商交易系统开发，有订单中心、商品中心、库存防超卖等核心业务经历，与岗位的'核心交易系统'方向高度契合。候选人熟悉Spring Boot、MyBatis、Redis、RabbitMQ、Spring Cloud，并有性能优化成果（接口RT下降40%）。但在JVM调优、并发编程、分库分表、分布式高可用等高级要求方面证据不足，主要为'了解'或未涉及，需面试深入验证。整体匹配度较高，建议进入面试重点考察高并发场景设计能力和分布式系统实践经验。",
+          "scoreBreakdown": {
+            "skillScore": 78.0,
+            "experienceScore": 82.0,
+            "projectScore": 78.0,
+            "softScore": 68.0,
+            "vectorScore": 63.33,
+            "rerankScore": 87.81,
+            "finalScore": 78.01
+          },
+          "retrieval": {
+            "vectorRank": 2,
+            "vectorScore": 63.33,
+            "candidateEvidence": "候选人: 李四 意向岗位: 技术 年限: 5年 学历: 本科 学校: 武汉大学 专业: 软件工程 简历原文: 李四 手机: 13987654321 邮箱: lisi@example.com 求职意向: 后端开发工程师 教育经历 2015.09 - 2019.06 武汉大学 软件工程 本科 技能 熟悉 Java, Spring Boot, MyBatis 熟悉 MySQL, 索引调优, 慢 SQL 优化 熟悉 Redis 缓存 熟悉 RabbitMQ 消息队列 熟悉 Spring Cloud 微服务 了解 JVM, 并发编程 工作经历 2019.07 - 至今 某电商平台 后端开发工程师 - 负责订单中心与商品中心后端服务开发 - MySQL 慢 SQL 优化与索引调优, 接口 RT 下降 40% - Redis 缓存热点商品数据, 降低 DB 压力 - RabbitMQ 解耦订单与库存流程, 实现最终一致 - 参与 Spring Cloud 微服务拆分与链路追踪建设 项目经历 项目一: 订单履约系统 角色: 核心开发 技术栈: Java, Spring Cloud, MySQL, Redis 描述: 实现下单到履约全链路追踪, 保障大促期间订单稳定履约。 项目二: 库存防超卖 角色: 开发 技术栈: Java, Redis, RabbitMQ 描述: 基于 Redis 与本地缓存实现高并发库存扣减, 防止超卖。"
+          },
+          "rerank": {
+            "rank": 2,
+            "score": 87.81,
+            "applied": true
+          },
+          "matchedPoints": [
+            {
+              "requirement": "本科及以上，计算机相关专业",
+              "status": "MATCH",
+              "evidence": "武汉大学软件工程本科（2015.09-2019.06）"
+            },
+            {
+              "requirement": "3-5年Java后端开发经验",
+              "status": "MATCH",
+              "evidence": "2019.07至今在某电商平台任后端开发工程师，约5年经验"
+            },
+            {
+              "requirement": "精通Java、Spring Boot、MyBatis，熟悉JVM调优与并发编程",
+              "status": "PARTIAL",
+              "evidence": "简历技能中明确熟悉Java、Spring Boot、MyBatis，但对JVM和并发编程仅为'了解'"
+            },
+            {
+              "requirement": "熟悉MySQL数据库设计与优化，了解分库分表",
+              "status": "PARTIAL",
+              "evidence": "有MySQL索引调优和慢SQL优化经验，但未提及分库分表相关实践"
+            },
+            {
+              "requirement": "熟悉Redis缓存、消息队列（Kafka/RabbitMQ）",
+              "status": "MATCH",
+              "evidence": "熟悉Redis缓存和RabbitMQ消息队列，并在实际项目中使用"
+            },
+            {
+              "requirement": "有微服务架构（Spring Cloud）实战经验",
+              "status": "MATCH",
+              "evidence": "参与Spring Cloud微服务拆分与链路追踪建设"
+            },
+            {
+              "requirement": "了解分布式事务、分布式锁、限流降级、熔断等高可用手段",
+              "status": "PARTIAL",
+              "evidence": "有RabbitMQ解耦订单与库存流程实现最终一致的经验，库存防超卖涉及并发控制，但未明确提及分布式事务/锁/限流熔断实践"
+            },
+            {
+              "requirement": "有交易、支付、金融系统经验者优先",
+              "status": "MATCH",
+              "evidence": "电商平台订单中心、订单履约系统、库存防超卖等交易相关系统经验"
+            }
+          ],
+          "gaps": [
+            {
+              "requirement": "熟悉JVM调优与并发编程",
+              "severity": "MEDIUM",
+              "reason": "简历仅写'了解JVM, 并发编程'，缺乏JVM调优和并发编程深度实践证据"
+            },
+            {
+              "requirement": "了解分库分表",
+              "severity": "LOW",
+              "reason": "简历中未提及任何分库分表相关经验或知识"
+            },
+            {
+              "requirement": "了解分布式事务、分布式锁、限流降级、熔断等高可用手段",
+              "severity": "MEDIUM",
+              "reason": "仅体现最终一致性，未明确展示分布式事务、限流降级、熔断等具体实践"
+            },
+            {
+              "requirement": "良好的沟通与协作能力，有责任感",
+              "severity": "LOW",
+              "reason": "简历未提供直接证据，需要面试进一步考察"
+            }
+          ],
+          "risks": [
+            "候选人长期在一家公司（5年），可能对多类业务场景和高可用架构的接触面有限",
+            "简历对高并发场景的具体数据（如QPS、并发量）和技术方案细节描述不足，难以评估深度",
+            "JVM调优与并发编程仅停留在了解层面，可能无法直接承担高级岗位要求的系统性能深度优化工作",
+            "未提及分库分表经验和分布式高可用手段，可能在核心交易系统架构演进中需要额外培养"
+          ],
+          "interviewQuestions": [
+            "请详细描述你在订单履约系统中如何做全链路追踪？遇到过哪些挑战？如何解决？",
+            "库存防超卖项目中，你如何设计Redis缓存和本地缓存？如何保证缓存与数据库的一致性？是否使用了分布式锁？具体实现方式？",
+            "你提到'了解JVM'，请举一个实际场景说明你如何分析和调优JVM性能？",
+            "如果订单表数据量达到亿级，你会如何设计分库分表方案？请谈谈思路。",
+            "在Spring Cloud微服务拆分过程中，你们如何处理跨服务的数据一致性问题？有没有使用分布式事务？",
+            "请说说你对限流、降级、熔断的理解，以及在项目中是否有实际应用？"
+          ],
+          "decision": {
+            "tier": "RECOMMEND",
+            "createInterview": true
+          }
+        }
+      },
+      {
+        "rank": 3,
+        "resume_id": 9,
+        "name": "王五",
+        "overall_score": 66.1,
+        "skill_score": 66.4,
+        "experience_score": 66.4,
+        "soft_score": 66.4,
+        "vector_score": 54.67,
+        "project_score": 66.4,
+        "rerank_score": 75.11,
+        "decision_tier": "REVIEW",
+        "interview_id": null,
+        "summary": "LLM 证据化评分失败，已使用向量与重排信号降级评分。",
+        "match_details": {
+          "version": "hybrid-ranking-v2-lite",
+          "candidateName": "王五",
+          "jobTitle": "Java后端工程师",
+          "summary": "LLM 证据化评分失败，已使用向量与重排信号降级评分。",
+          "reason": "LLM 证据化评分失败，已使用向量与重排信号降级评分。",
+          "scoreBreakdown": {
+            "skillScore": 66.4,
+            "experienceScore": 66.4,
+            "projectScore": 66.4,
+            "softScore": 66.4,
+            "vectorScore": 54.67,
+            "rerankScore": 75.11,
+            "finalScore": 66.1
+          },
+          "retrieval": {
+            "vectorRank": 7,
+            "vectorScore": 54.67,
+            "candidateEvidence": "候选人: 王五 意向岗位: 技术 年限: 6年 学历: 本科 学校: 杭州电子科技大学 专业: 计算机科学与技术 简历原文: 王五 手机: 13700001111 邮箱: wangwu@example.com 求职意向: Java开发工程师 教育经历 2016.09 - 2020.06 杭州电子科技大学 计算机科学与技术 本科 技能 熟悉 Java, Spring Boot, MyBatis 熟悉 MySQL 业务表设计 熟悉 Redis 缓存 了解 JVM 基础 工作经历 2020.07 - 至今 某内容平台 Java 开发工程师 - 负责内容审核与发布服务后端开发 - MySQL 业务表设计与 Redis 缓存方案 - 参与接口性能优化与重构 - 编写单元测试与接口文档 项目经历 项目一: 内容审核平台 角色: 开发 技术栈: Java, Spring Boot, MySQL, Redis 描述: 实现多级审核流程, 接入机器审核与人工复审, 提升审核效率。 项目二: 内容发布服务 角色: 开发 技术栈: Java, Redis 描述: 基于 Redis 限流与缓存, 保障发布接口稳定性。"
+          },
+          "rerank": {
+            "rank": 4,
+            "score": 75.11,
+            "applied": true
+          },
+          "matchedPoints": [],
+          "gaps": [],
+          "risks": [],
+          "interviewQuestions": [],
+          "decision": {
+            "tier": "REVIEW",
+            "createInterview": false
+          }
+        }
+      },
+      {
+        "rank": 4,
+        "resume_id": 5,
+        "name": "李璐阳",
+        "overall_score": 54.46,
+        "skill_score": 68.0,
+        "experience_score": 30.0,
+        "soft_score": 55.0,
+        "vector_score": 50.65,
+        "project_score": 60.0,
+        "rerank_score": 67.46,
+        "decision_tier": "WEAK",
+        "interview_id": null,
+        "summary": "候选人具备扎实的Java后端基础知识，在项目实践中覆盖了SpringBoot、MySQL、Redis、RabbitMQ、分布式锁等技术点，展现出较强的学习能力和动手能力。但综合评估来看，其工作年限为0，缺少真实生产环境和微服务架构的实战经验，与“高级Java后端工程师”岗位要求存在明显差距。建议作为初级/实习候选人储备，不建议直接匹配该高级岗位。",
+        "match_details": {
+          "version": "hybrid-ranking-v2-lite",
+          "candidateName": "李璐阳",
+          "jobTitle": "Java后端工程师",
+          "summary": "候选人具备扎实的Java后端基础知识，在项目实践中覆盖了SpringBoot、MySQL、Redis、RabbitMQ、分布式锁等技术点，展现出较强的学习能力和动手能力。但综合评估来看，其工作年限为0，缺少真实生产环境和微服务架构的实战经验，与“高级Java后端工程师”岗位要求存在明显差距。建议作为初级/实习候选人储备，不建议直接匹配该高级岗位。",
+          "reason": "候选人具备扎实的Java后端基础知识，在项目实践中覆盖了SpringBoot、MySQL、Redis、RabbitMQ、分布式锁等技术点，展现出较强的学习能力和动手能力。但综合评估来看，其工作年限为0，缺少真实生产环境和微服务架构的实战经验，与“高级Java后端工程师”岗位要求存在明显差距。建议作为初级/实习候选人储备，不建议直接匹配该高级岗位。",
+          "scoreBreakdown": {
+            "skillScore": 68.0,
+            "experienceScore": 30.0,
+            "projectScore": 60.0,
+            "softScore": 55.0,
+            "vectorScore": 50.65,
+            "rerankScore": 67.46,
+            "finalScore": 54.46
+          },
+          "retrieval": {
+            "vectorRank": 1,
+            "vectorScore": 50.65,
+            "candidateEvidence": "候选人: 李璐阳 意向岗位: 技术 年限: 0年 学历: 硕士 学校: 郑州大学 专业: 网络与信息安全 简历原文: 教育背景 郑州大学（211） 网络与信息安全 (硕士) 2024.09 - 2027.06 郑州轻工业大学 计算机科学与技术 (本科) 2020.09 - 2024.06 项目经历 优品生活服务 后端开发 项目简介：一款集商铺发布优惠券、用户打卡探店为一体的生活服务平台，主要实现了用户登录、查看商铺、优惠券秒 杀、发布笔记、查看笔记和点赞的功能。 主要技术栈：SpringBoot+MySQL+MyBatis-Plus+Redis+Redisson+Nginx+LangChain4j 功能描述： 登录模块基于 Redis 实现手机号黑名单防止短信接口恶意调用；采用安全 Cookie存储Token，Redis存储用户信息实 现分布式 Session 共享；通过 ThreadLocal 保存用户上下文，搭配双层拦截器完成统一鉴权与 Token 自动续期； 抢券环节采用乐观锁机制防止库存超卖，引入Redisson分布式锁实现集群环境下一人一单的约束，无超卖 / 重复下 单问题；通过 RabbitMQ 将订单创建同步流程改为异步处理，优化秒杀场景的性能； 设计缓存优化方案，通过空对象缓存 + 布隆过滤器解决缓存穿透，互斥锁 + 逻辑过期解决热点 Key 击穿，随机过期 时间解决缓存雪崩; 开发智能客服功能，基于 Redis 存储对话上下文，实现商铺 / 优惠券信息工具调用，通过 Milvus 向量数据库构建 RAG 知识库，结合 LangChain4j 完成智能问答; 阅视图库 后端开发 项目简介：一款面向用户打造多场景图片管理平台，分为公共图库，私有图库，团队共享图库。用户可以在平台上传和 检索图片，管理员可以上传、审核和管理分析图片。个人用户可对私有图库中图片进行批量管理多维搜索以及编辑分 析，同时在团队空间中邀请成员共享图片。 主要技术栈：SpringBoot+MySQL+MyBatis-Plus+Redis+COS+Nginx+SaToken+ShardingSphere 功能描述： 利用模板方法设计模式统一封装本地图片和URL图片上传的流程，复用代码并提高可维护性； 利用Redis+Caffine构建多级缓存，降低接口响应耗时，并通过随机过期时间降低缓存雪崩风险； 基于自定义权限校验注解和Spring AOP环绕切面，实现了统一的权限校验，区分用户和管理员； 利用分段锁+TransactionTemplate编程式事务实现了空间创建服务，限制用户最多创建一个私有空间； 利用数据万象服务提取图片主色调存储到数据库，搜索时利用欧氏距离计算颜色相似度达到按颜色排序的效果； 基于SaToken的Kit模式实现了多账号体系的RBAC权限控制，通过从请求上下文中获取参数实现了统一的权限校验逻 辑，并运用注解合并简化了鉴权注解的使用，实现方法级别的权限校验； 使用ShardingSphere自定义分表算法实现了团队空间图片的动态分表，提高了查询效率。并且为了通过框架内置的 校验规则，手动维护可用分表节点； 专业技能 掌握Java基础，理解常用集合及数据结构，面向对象、锁机制、并发编程、线程池、ThreadLocal等知识。 熟悉JVM内存结构、类加载器、垃圾回收算法、双亲委派机制、类生命周期等知识。 熟悉Redis，熟悉基本数据类型、持久化机制、缓存穿透、缓存击穿、缓存雪崩等问题。 熟悉MySQL，理解索引、事务、日志、MVCC、锁机制及常用的SQL优化。 熟悉SpringBoot、SpringMVC、Mybatis、Mybatis-Plus等常用框架，了解Spring IOC、AOP原理。 熟悉Linux常用命令，熟悉Git版本管理工具，熟悉Maven进行项目依赖管理及构建。 熟悉消息队列的使用，理解RabbitMQ基本架构、消息队列模型，能基于 Rab"
+          },
+          "rerank": {
+            "rank": 5,
+            "score": 67.46,
+            "applied": true
+          },
+          "matchedPoints": [
+            {
+              "requirement": "精通 Java、Spring Boot、MyBatis",
+              "status": "MATCH",
+              "evidence": "简历中明确掌握Java基础，熟悉SpringBoot、SpringMVC、MyBatis、MyBatis-Plus，项目中使用SpringBoot+MyBatis-Plus开发。"
+            },
+            {
+              "requirement": "熟悉 MySQL 数据库设计与优化",
+              "status": "MATCH",
+              "evidence": "熟悉MySQL索引、事务、日志、MVCC、锁机制及SQL优化，项目中使用MySQL并涉及分表场景。"
+            },
+            {
+              "requirement": "熟悉 Redis 缓存、消息队列（Kafka / RabbitMQ）",
+              "status": "PARTIAL",
+              "evidence": "熟悉Redis常见问题及使用，项目中用Redis和Redisson分布式锁；熟悉RabbitMQ消息队列，但与Kafka无直接经验。"
+            },
+            {
+              "requirement": "有微服务架构（Spring Cloud）实战经验",
+              "status": "PARTIAL",
+              "evidence": "项目中使用过分布式锁、消息队列等组件，但未体现Spring Cloud微服务架构的实战经验。"
+            },
+            {
+              "requirement": "了解分布式事务、分布式锁、限流降级、熔断等高可用手段",
+              "status": "PARTIAL",
+              "evidence": "在项目中使用了Redisson分布式锁和相应缓存方案，但未体现分布式事务、限流降级、熔断的实际应用。"
+            },
+            {
+              "requirement": "本科及以上学历，计算机相关专业",
+              "status": "MATCH",
+              "evidence": "郑州大学网络与信息安全硕士在读，郑州轻工业大学计算机科学与技术本科，符合学历及专业要求。"
+            },
+            {
+              "requirement": "有交易、支付、金融系统经验者优先",
+              "status": "PARTIAL",
+              "evidence": "有优惠券秒杀、一人一单等类似交易场景项目，但非真实金融业务系统。"
+            }
+          ],
+          "gaps": [
+            {
+              "requirement": "3-5 年 Java 后端开发经验",
+              "severity": "HIGH",
+              "reason": "候选人当前为硕士在读，工作年限为0年，与岗位明确的3-5年经验要求差距极大。"
+            },
+            {
+              "requirement": "精通 Java、Spring Boot、MyBatis，熟悉 JVM 调优与并发编程",
+              "severity": "MEDIUM",
+              "reason": "简历中展示了对基础知识的熟悉，但未体现JVM调优实战和复杂并发场景的处理经验。"
+            },
+            {
+              "requirement": "有微服务架构（Spring Cloud）实战经验",
+              "severity": "HIGH",
+              "reason": "项目经历均为单体应用或简单分布式组件，未提及Spring Cloud微服务拆分、注册中心、网关、配置中心等实践。"
+            },
+            {
+              "requirement": "了解分布式事务、限流降级、熔断等高可用手段",
+              "severity": "MEDIUM",
+              "reason": "简历中未涵盖分布式事务、限流、熔断降级等实际应用，仅使用过分布式锁和缓存优化。"
+            }
+          ],
+          "risks": [
+            "工作年限为0，不符合岗位硬性年限要求，职级匹配风险极高。",
+            "项目经历偏教学/个人项目，缺乏真实生产环境的高并发、线上稳定性及团队协作经验。",
+            "对金融、交易类系统的业务复杂度和合规要求缺乏实战理解。",
+            "硕士尚未毕业，全职工作的稳定性和入职时间存在不确定性。"
+          ],
+          "interviewQuestions": [
+            "请详细说明你在优惠券秒杀项目中如何设计Redis和RabbitMQ的异步下单流程？如果消息丢失或重复消费，你会如何保证最终一致性？",
+            "你在项目中提到使用Redisson分布式锁实现一人一单，请解释分布式锁的失效场景和Redisson看门狗机制的原理。",
+            "请说明你对分布式事务的理解，假设在微服务架构下进行转账操作，你会如何设计保证数据一致性？",
+            "谈谈你在项目中遇到的缓存穿透、击穿、雪崩中的实际解决案例，并说明如何监控和评估优化效果？",
+            "如果让你主导一个高并发交易系统的性能优化，你的排查思路和步骤是什么？"
+          ],
+          "decision": {
+            "tier": "WEAK",
+            "createInterview": false
+          }
+        }
+      },
+      {
+        "rank": 5,
+        "resume_id": 10,
+        "name": "赵六",
+        "overall_score": 48.14,
+        "skill_score": 25.0,
+        "experience_score": 55.0,
+        "soft_score": 65.0,
+        "vector_score": 59.51,
+        "project_score": 50.0,
+        "rerank_score": 76.89,
+        "decision_tier": "WEAK",
+        "interview_id": null,
+        "summary": "候选人教育背景和支付行业经验与岗位部分契合，但核心技术栈为Python而非Java，缺乏岗位必需的Java、Spring Boot、MyBatis、JVM调优及Spring Cloud微服务经验，属于高风险跨技术栈候选人。建议仅在急需支付领域业务专家且可接受较长成长期时考虑，否则匹配度低。",
+        "match_details": {
+          "version": "hybrid-ranking-v2-lite",
+          "candidateName": "赵六",
+          "jobTitle": "Java后端工程师",
+          "summary": "候选人教育背景和支付行业经验与岗位部分契合，但核心技术栈为Python而非Java，缺乏岗位必需的Java、Spring Boot、MyBatis、JVM调优及Spring Cloud微服务经验，属于高风险跨技术栈候选人。建议仅在急需支付领域业务专家且可接受较长成长期时考虑，否则匹配度低。",
+          "reason": "候选人教育背景和支付行业经验与岗位部分契合，但核心技术栈为Python而非Java，缺乏岗位必需的Java、Spring Boot、MyBatis、JVM调优及Spring Cloud微服务经验，属于高风险跨技术栈候选人。建议仅在急需支付领域业务专家且可接受较长成长期时考虑，否则匹配度低。",
+          "scoreBreakdown": {
+            "skillScore": 25.0,
+            "experienceScore": 55.0,
+            "projectScore": 50.0,
+            "softScore": 65.0,
+            "vectorScore": 59.51,
+            "rerankScore": 76.89,
+            "finalScore": 48.14
+          },
+          "retrieval": {
+            "vectorRank": 3,
+            "vectorScore": 59.51,
+            "candidateEvidence": "候选人: 赵六 意向岗位: 技术 年限: 7年 学历: 本科 学校: 华中科技大学 专业: 计算机科学与技术 简历原文: 赵六 手机: 13600002222 邮箱: zhaoliu@example.com 求职意向: 后端开发工程师 教育经历 2015.09 - 2019.06 华中科技大学 计算机科学与技术 本科 技能 精通 Python, Django, FastAPI 熟悉 MySQL, 分库分表 熟悉 Redis 缓存 熟悉 Kafka 消息队列 熟悉 FastAPI 微服务 了解分布式事务与补偿 工作经历 2019.07 - 至今 某支付公司 后端开发工程师 - 负责清结算后端服务设计与开发 (Python 技术栈) - MySQL 分库分表与 Redis 缓存优化 - Kafka 异步处理交易流水与对账 - FastAPI 微服务拆分, 服务治理 - 分布式事务补偿方案, 资金核对零差异 项目经历 项目一: 清结算引擎 角色: 核心开发 技术栈: Python, FastAPI, MySQL, Redis, Kafka 描述: 实现分布式清结算与资金核对, 支撑日均百万笔交易。 项目二: 风控服务 角色: 开发 技术栈: Python, Redis 描述: 实时规则引擎, 毫秒级风控决策。"
+          },
+          "rerank": {
+            "rank": 3,
+            "score": 76.89,
+            "applied": true
+          },
+          "matchedPoints": [
+            {
+              "requirement": "本科及以上学历，计算机相关专业",
+              "status": "MATCH",
+              "evidence": "华中科技大学计算机科学与技术本科"
+            },
+            {
+              "requirement": "熟悉MySQL数据库设计与优化，了解分库分表",
+              "status": "MATCH",
+              "evidence": "简历中明确熟悉MySQL，有分库分表实践"
+            },
+            {
+              "requirement": "熟悉Redis缓存、消息队列（Kafka / RabbitMQ）",
+              "status": "MATCH",
+              "evidence": "熟悉Redis缓存，熟悉Kafka消息队列，有实际使用"
+            },
+            {
+              "requirement": "有交易、支付、金融系统经验者优先",
+              "status": "MATCH",
+              "evidence": "某支付公司清结算后端服务设计开发，资金核对零差异"
+            }
+          ],
+          "gaps": [
+            {
+              "requirement": "精通Java、Spring Boot、MyBatis",
+              "severity": "HIGH",
+              "reason": "候选人技术栈为Python/Django/FastAPI，无任何Java或Spring Boot/MyBatis经验"
+            },
+            {
+              "requirement": "熟悉JVM调优与并发编程",
+              "severity": "HIGH",
+              "reason": "无JVM相关经验，并发编程知识未体现"
+            },
+            {
+              "requirement": "有微服务架构（Spring Cloud）实战经验",
+              "severity": "HIGH",
+              "reason": "有FastAPI微服务经验，但无Spring Cloud经验"
+            },
+            {
+              "requirement": "了解分布式事务、分布式锁、限流降级、熔断等高可用手段",
+              "severity": "MEDIUM",
+              "reason": "了解分布式事务补偿，但未涉及分布式锁、限流降级、熔断等，且基于Python技术栈"
+            }
+          ],
+          "risks": [
+            "技术栈完全不符，候选人需从Python转Java，学习成本高，短期难以上手核心业务",
+            "候选人有7年经验，超过岗位3-5年要求，可能薪资期望偏高，稳定性未知",
+            "简历中未体现Java生态相关项目，面试中需重点验证Java基础能力"
+          ],
+          "interviewQuestions": [
+            "你目前的经验主要是Python，为什么考虑转到Java后端岗位？如何应对技术栈转变的挑战？",
+            "请谈谈你对Java并发编程的理解，例如synchronized和ReentrantLock的区别，以及JVM调优的常见手段。",
+            "你提到分布式事务补偿方案，能否详细说明在清结算场景中如何设计？如果使用Java技术栈，你会如何实现？",
+            "你是否有Spring Boot或Spring Cloud的实际项目经验？请举例说明。"
+          ],
+          "decision": {
+            "tier": "WEAK",
+            "createInterview": false
+          }
+        }
+      },
+      {
+        "rank": 6,
+        "resume_id": 11,
+        "name": "钱七",
+        "overall_score": 35.41,
+        "skill_score": 25.0,
+        "experience_score": 40.0,
+        "soft_score": 60.0,
+        "vector_score": 46.11,
+        "project_score": 20.0,
+        "rerank_score": 63.03,
+        "decision_tier": "WEAK",
+        "interview_id": null,
+        "summary": "候选人本科学历和专业符合要求，工作年限约4年，但全程为前端开发，后端技能仅停留在“了解”级别，缺乏Java生态核心框架、MySQL优化、中间件、微服务及高可用体系的实际经验。项目经历无任何交易、支付或高并发系统背景，求职意向也不匹配目前岗位方向。当前评估结果与高级Java后端要求差距非常大，不建议推进。",
+        "match_details": {
+          "version": "hybrid-ranking-v2-lite",
+          "candidateName": "钱七",
+          "jobTitle": "Java后端工程师",
+          "summary": "候选人本科学历和专业符合要求，工作年限约4年，但全程为前端开发，后端技能仅停留在“了解”级别，缺乏Java生态核心框架、MySQL优化、中间件、微服务及高可用体系的实际经验。项目经历无任何交易、支付或高并发系统背景，求职意向也不匹配目前岗位方向。当前评估结果与高级Java后端要求差距非常大，不建议推进。",
+          "reason": "候选人本科学历和专业符合要求，工作年限约4年，但全程为前端开发，后端技能仅停留在“了解”级别，缺乏Java生态核心框架、MySQL优化、中间件、微服务及高可用体系的实际经验。项目经历无任何交易、支付或高并发系统背景，求职意向也不匹配目前岗位方向。当前评估结果与高级Java后端要求差距非常大，不建议推进。",
+          "scoreBreakdown": {
+            "skillScore": 25.0,
+            "experienceScore": 40.0,
+            "projectScore": 20.0,
+            "softScore": 60.0,
+            "vectorScore": 46.11,
+            "rerankScore": 63.03,
+            "finalScore": 35.41
+          },
+          "retrieval": {
+            "vectorRank": 5,
+            "vectorScore": 46.11,
+            "candidateEvidence": "候选人: 钱七 意向岗位: 技术 年限: 5年 学历: 本科 学校: 某二本院校 专业: 软件工程 简历原文: 钱七 手机: 13500003333 邮箱: qianqi@example.com 求职意向: 前端工程师 教育经历 2017.09 - 2021.06 某二本院校 软件工程 本科 技能 熟悉 Vue, React 了解 Java, Spring Boot 了解 MySQL 基础 了解 HTML/CSS/JavaScript 工作经历 2021.07 - 至今 某 SaaS 公司 前端工程师 - 负责管理后台前端开发 (Vue3 / React) - 使用 Spring Boot 开发部分 BFF 接口 - MySQL 简单业务表设计 - 与后端协作联调 项目经历 项目一: 数据可视化大屏 角色: 前端开发 技术栈: Vue3, ECharts 描述: 实现业务数据可视化大屏, 实时刷新。 项目二: 中后台管理系统 角色: 前端开发 技术栈: React, Ant Design, Spring Boot 描述: 中后台系统前端, 配套少量 BFF 接口。"
+          },
+          "rerank": {
+            "rank": 7,
+            "score": 63.03,
+            "applied": true
+          },
+          "matchedPoints": [
+            {
+              "requirement": "本科及以上学历，计算机相关专业",
+              "status": "MATCH",
+              "evidence": "某二本院校软件工程专业本科，2017.09-2021.06"
+            },
+            {
+              "requirement": "3-5年Java后端开发经验",
+              "status": "PARTIAL",
+              "evidence": "2021.07至今约4年工作经验，但均为前端工程师岗位，非后端开发"
+            },
+            {
+              "requirement": "精通Java、Spring Boot、MyBatis",
+              "status": "PARTIAL",
+              "evidence": "简历技能中仅写“了解Java, Spring Boot”，未提及MyBatis，深度不足"
+            },
+            {
+              "requirement": "熟悉MySQL数据库设计与优化",
+              "status": "PARTIAL",
+              "evidence": "简历写“了解MySQL基础”，仅做过简单业务表设计"
+            },
+            {
+              "requirement": "良好的沟通与协作能力",
+              "status": "PARTIAL",
+              "evidence": "有与后端协作联调经验，但无突出证据体现跨团队沟通"
+            }
+          ],
+          "gaps": [
+            {
+              "requirement": "精通Java、Spring Boot、MyBatis",
+              "severity": "HIGH",
+              "reason": "候选人实际技能仅停留在“了解”层面，无后端深度开发经验"
+            },
+            {
+              "requirement": "熟悉MySQL数据库设计与优化，了解分库分表",
+              "severity": "HIGH",
+              "reason": "仅了解MySQL基础，无优化和分库分表实践"
+            },
+            {
+              "requirement": "熟悉Redis缓存、消息队列（Kafka/RabbitMQ）",
+              "severity": "HIGH",
+              "reason": "简历中未提及任何Redis或消息队列使用经验"
+            },
+            {
+              "requirement": "有微服务架构（Spring Cloud）实战经验",
+              "severity": "HIGH",
+              "reason": "简历未体现微服务项目经验"
+            },
+            {
+              "requirement": "了解分布式事务、分布式锁、限流降级、熔断等高可用手段",
+              "severity": "HIGH",
+              "reason": "简历无相关技术知识或项目实践"
+            },
+            {
+              "requirement": "有交易、支付、金融系统经验者优先",
+              "severity": "MEDIUM",
+              "reason": "候选人项目均为管理后台和数据可视化，无交易或金融相关背景"
+            },
+            {
+              "requirement": "候选人求职意向与岗位一致性",
+              "severity": "HIGH",
+              "reason": "简历中明确求职意向为前端工程师，与Java后端岗位方向不符"
+            }
+          ],
+          "risks": [
+            "候选人求职意向为前端工程师，应聘Java后端岗位的动机存疑，稳定性风险高",
+            "后端技术基础薄弱，仅处于“了解”级别，无法支撑高级后端岗位的高并发设计、JVM调优等核心职责",
+            "无高并发、分布式系统实战经验，可能无法胜任核心交易系统的架构演进和线上问题定位",
+            "项目经历全部为前端项目，后端能力缺乏可验证的落地成果"
+          ],
+          "interviewQuestions": [
+            "你的求职意向是前端工程师，为什么应聘Java后端高级岗位？请说明你的技术转型动机。",
+            "请具体介绍你用Spring Boot开发BFF接口的实践，你负责了哪些后端逻辑？",
+            "如果线上交易系统出现频繁Full GC导致接口超时，你会如何排查和优化？",
+            "请解释你理解的分布式事务和分布式锁，并在什么场景下会使用？",
+            "你如何设计一个高并发的下单接口来保证数据一致性和幂等性？"
+          ],
+          "decision": {
+            "tier": "WEAK",
+            "createInterview": false
+          }
+        }
+      },
+      {
+        "rank": 7,
+        "resume_id": 12,
+        "name": "孙八",
+        "overall_score": 29.53,
+        "skill_score": 25.0,
+        "experience_score": 20.0,
+        "soft_score": 50.0,
+        "vector_score": 48.97,
+        "project_score": 15.0,
+        "rerank_score": 66.36,
+        "decision_tier": "WEAK",
+        "interview_id": null,
+        "summary": "候选人孙八为专科学历，工作年限2年，目前从事小型公司的后台管理系统开发，以简单CRUD接口为主。技术栈停留在Java/Spring Boot/MySQL基础层面，对消息队列、微服务、分布式事务等高可用技术没有掌握。项目经历仅为单体架构的进销存系统，与核心交易系统的高并发、性能优化等要求差距极大。整体匹配度低，不建议进入后续筛选流程。",
+        "match_details": {
+          "version": "hybrid-ranking-v2-lite",
+          "candidateName": "孙八",
+          "jobTitle": "Java后端工程师",
+          "summary": "候选人孙八为专科学历，工作年限2年，目前从事小型公司的后台管理系统开发，以简单CRUD接口为主。技术栈停留在Java/Spring Boot/MySQL基础层面，对消息队列、微服务、分布式事务等高可用技术没有掌握。项目经历仅为单体架构的进销存系统，与核心交易系统的高并发、性能优化等要求差距极大。整体匹配度低，不建议进入后续筛选流程。",
+          "reason": "候选人孙八为专科学历，工作年限2年，目前从事小型公司的后台管理系统开发，以简单CRUD接口为主。技术栈停留在Java/Spring Boot/MySQL基础层面，对消息队列、微服务、分布式事务等高可用技术没有掌握。项目经历仅为单体架构的进销存系统，与核心交易系统的高并发、性能优化等要求差距极大。整体匹配度低，不建议进入后续筛选流程。",
+          "scoreBreakdown": {
+            "skillScore": 25.0,
+            "experienceScore": 20.0,
+            "projectScore": 15.0,
+            "softScore": 50.0,
+            "vectorScore": 48.97,
+            "rerankScore": 66.36,
+            "finalScore": 29.53
+          },
+          "retrieval": {
+            "vectorRank": 4,
+            "vectorScore": 48.97,
+            "candidateEvidence": "候选人: 孙八 意向岗位: 技术 年限: 2年 学历: 专科 学校: 某职业技术学院 专业: 计算机应用 简历原文: 孙八 手机: 13400004444 邮箱: sunba@example.com 求职意向: Java开发 教育经历 2020.09 - 2023.06 某职业技术学院 计算机应用 专科 技能 Java 基础 Spring Boot 基础 MySQL 基础 学习过 Redis 基础 工作经历 2023.07 - 至今 某小型公司 Java 开发 - 参与后台管理系统开发 - 实现简单 CRUD 接口 - 学习 Redis 缓存基础用法 项目经历 项目一: 进销存系统 角色: 开发 技术栈: Java, Spring Boot, MySQL 描述: 基于 Spring Boot 的小型进销存系统, 单体架构。"
+          },
+          "rerank": {
+            "rank": 6,
+            "score": 66.36,
+            "applied": true
+          },
+          "matchedPoints": [
+            {
+              "requirement": "3-5年Java后端开发经验",
+              "status": "PARTIAL",
+              "evidence": "候选人实际工作年限为2年，不满足最低3年要求"
+            },
+            {
+              "requirement": "精通Java、Spring Boot",
+              "status": "PARTIAL",
+              "evidence": "简历仅体现Java基础、Spring Boot基础，未达到精通水平"
+            },
+            {
+              "requirement": "熟悉MySQL数据库设计与优化",
+              "status": "PARTIAL",
+              "evidence": "简历仅写明MySQL基础，没有设计或优化相关经验"
+            },
+            {
+              "requirement": "熟悉Redis缓存",
+              "status": "PARTIAL",
+              "evidence": "候选人仅学习过Redis基础用法，未体现实际项目应用"
+            }
+          ],
+          "gaps": [
+            {
+              "requirement": "本科及以上学历",
+              "severity": "HIGH",
+              "reason": "候选人为专科学历，不符合岗位硬性学历要求"
+            },
+            {
+              "requirement": "有微服务架构（Spring Cloud）实战经验",
+              "severity": "HIGH",
+              "reason": "候选人项目为单体架构，无微服务相关经验"
+            },
+            {
+              "requirement": "熟悉消息队列（Kafka/RabbitMQ）",
+              "severity": "HIGH",
+              "reason": "候选人未体现任何消息队列使用或学习经历"
+            },
+            {
+              "requirement": "了解分布式事务、分布式锁、限流降级等高可用手段",
+              "severity": "HIGH",
+              "reason": "候选人无相关实践经验，且未提及相关理论知识"
+            },
+            {
+              "requirement": "3-5年Java后端开发经验",
+              "severity": "HIGH",
+              "reason": "候选人仅2年开发经验，且工作内容为简单CRUD接口，难以支撑高级岗位要求"
+            }
+          ],
+          "risks": [
+            "候选人技术深度不足，无法胜任高级Java后端工程师职责",
+            "候选人缺乏高并发、分布式、交易系统相关经验，与核心交易系统需求严重不匹配",
+            "学历不达标，可能无法通过公司招聘硬性筛选",
+            "现有项目复杂度低，成长空间有限，需要大量培养成本"
+          ],
+          "interviewQuestions": [
+            "请简述JVM内存区域划分，并说明如何排查内存溢出问题？",
+            "在高并发场景下，如何避免缓存穿透、击穿和雪崩？",
+            "你了解哪些分布式事务解决方案？请对比说明。",
+            "如果线上接口响应变慢，你会如何定位和优化？",
+            "Spring Cloud中服务之间如何实现负载均衡？"
+          ],
+          "decision": {
+            "tier": "WEAK",
+            "createInterview": false
+          }
+        }
+      }
+    ]
+  }
+}
