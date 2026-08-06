@@ -77,6 +77,11 @@ app.langfuse.secret-key=
 app.web-search.api-key=YOUR_TAVILY_API_KEY
 app.web-search.base-url=https://api.tavily.com
 
+# ─── Vision 视觉 OCR (阿里云百炼 multimodal, 扫描件 PDF 兜底) ───
+app.vision.api-key=YOUR_VISION_API_KEY
+app.vision.base-url=YOUR_VISION_BASE_URL
+app.vision.model=qwen3.5-ocr
+
 # ─── Intent 动态锚点自学习 (默认关闭, 灰度开启) ───
 app.intent.dynamic-anchor.enabled=false
 app.intent.dynamic-anchor.dedup-threshold=0.90

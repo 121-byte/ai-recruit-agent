@@ -18,7 +18,7 @@ import java.util.Map;
 /**
  * 统一 LLM 调用入口 (复刻自文档 §9.1)。
  *
- * <p>封装 WebClient 调用蚂蚁灵犀 (antchat.alipay.com) OpenAI 兼容接口。
+ * <p>封装 WebClient 调用 OpenAI 兼容接口 (端点由 app.ai.base-url 注入)。
  * 当未配置 API Key 或开启 Mock 模式时，返回桩数据，保证系统可启动可演示。
  *
  * <p>API 方法表 (文档 §9.1)：

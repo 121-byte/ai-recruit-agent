@@ -40,7 +40,8 @@ public class AppProperties {
     @Data
     public static class Ai {
         private String apiKey;
-        private String baseUrl = "https://antchat.alipay.com/v1";
+        /** 端点由 app.ai.base-url 注入,不在代码中硬编码内部基础设施地址。 */
+        private String baseUrl = "";
         private String modelPrimary = "openai:deepseek-v4-flash";
         private String modelFast = "openai:deepseek-v4-flash";
     }
@@ -166,7 +167,8 @@ public class AppProperties {
     @Data
     public static class Vision {
         private String apiKey;
-        private String baseUrl = "https://ws-js26om9s5ra7zbqr.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
+        /** 端点由 app.vision.base-url 注入,不在代码中硬编码云实例地址。 */
+        private String baseUrl = "";
         /** 视觉 OCR 模型 (百炼 qwen3.5-ocr, OCR 专用, 实测可用)。 */
         private String model = "qwen3.5-ocr";
     }
